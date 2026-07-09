@@ -47,6 +47,11 @@ import CheckoutPage from './components/CheckoutPage';
 import ProfileSettingsPage from './components/ProfileSettingsPage';
 import HelpSupportPage from './components/HelpSupportPage';
 import NotificationsCenter from './components/NotificationsCenter';
+import BookingModal from './components/BookingModal';
+import AdminDashboard from './components/AdminDashboard';
+import MyBookings from './components/MyBookings';
+import EmergencyBookingModal from './components/EmergencyBookingModal';
+import EmergencyTracking from './components/EmergencyTracking';
 
 // Types for Chatbot
 interface Message {
@@ -69,11 +74,19 @@ interface ConfettiItem {
 
 export default function App() {
   /* --- Routing State --- */
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'mechanicProfile' | 'checkout'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'mechanicProfile' | 'checkout' | 'admin' | 'myBookings' | 'emergencyTrack'>('landing');
   const [checkoutData, setCheckoutData] = useState<any>(null);
 
+  /* --- Booking Modal State --- */
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingService, setBookingService] = useState({ name: '', price: 0 });
+
+  /* --- Emergency Modal & Tracking States --- */
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [activeEmergencyId, setActiveEmergencyId] = useState<string | null>(null);
+
   /* --- Dashboard Tab Switcher --- */
-  const [activeDashboardTab, setActiveDashboardTab] = useState<'home' | 'dispatch' | 'chat' | 'profile' | 'nearby' | 'help' | 'notifications'>('home');
+  const [activeDashboardTab, setActiveDashboardTab] = useState<'home' | 'dispatch' | 'chat' | 'profile' | 'nearby' | 'help' | 'notifications' | 'myBookings'>('home');
 
   /* --- Theme State --- */
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -104,6 +117,7 @@ export default function App() {
   /* --- Navbar Scroll State --- */
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState('home');
 
   useEffect(() => {
     const handleScroll = () => {
@@ -112,7 +126,21 @@ export default function App() {
       } else {
         setScrolled(false);
       }
-      
+
+      if (currentView === 'landing') {
+        const sections = ['contact', 'faq', 'reviews', 'how-it-works', 'services', 'features', 'home'];
+        for (const id of sections) {
+          const el = document.getElementById(id);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            if (rect.top <= 120) {
+              setActiveSection(id);
+              break;
+            }
+          }
+        }
+      }
+
       const backToTopBtn = document.getElementById('back-to-top');
       if (backToTopBtn) {
         if (window.scrollY > 500) {
@@ -271,20 +299,20 @@ export default function App() {
       const cleaned = userInput.toLowerCase();
       if (cleaned.includes('tire') || cleaned.includes('flat')) {
         aiText = "🔍 AI DIAGNOSIS: Standard tire puncture or structural damage detected. Recommend direct tire swap or puncture repair. Safety advice: Please park your car safely in the emergency lane, put on hazard warning lights, and do not attempt to stand near highway lanes.";
-        cost = "$49 - $80";
-        mechanic = "Rescue Mobile Repair (1.2 miles away)";
+        cost = "₹699";
+        mechanic = "Rescue Mobile Repair (1.2 km away)";
       } else if (cleaned.includes('battery') || cleaned.includes('dead') || cleaned.includes('start')) {
         aiText = "🔍 AI DIAGNOSIS: Vehicle battery voltage critical. Requires jump start or battery replacement. Match found: 3 mobile dispatchers nearby carry premium replacement batteries for your model.";
-        cost = "$65 - $110";
-        mechanic = "Apex Battery & Auto (2.0 miles away)";
+        cost = "₹999";
+        mechanic = "Apex Battery & Auto (2.0 km away)";
       } else if (cleaned.includes('smoke') || cleaned.includes('overheat') || cleaned.includes('engine')) {
         aiText = "🚨 HIGH CRITICAL ALERT: Fluid leakage or cylinder cooling failure. Running engine now can cause catastrophic damage. Please turn off your ignition immediately, step safely behind the guard rail, and wait. Dispatching high-capacity flatbed tow truck.";
-        cost = "$120 - $220";
-        mechanic = "Tow Pro Logistics (2.8 miles away)";
+        cost = "₹1,499";
+        mechanic = "Tow Pro Logistics (2.8 km away)";
       } else {
         aiText = "🔍 AI DIAGNOSIS: Custom vehicle diagnostic request received. Estimating location and connecting you with the closest technician specializing in engine troubleshooting.";
-        cost = "$90 - $150";
-        mechanic = "Certified Engine Care Mobile (1.5 miles away)";
+        cost = "₹899 - ₹1,499";
+        mechanic = "Certified Engine Care Mobile (1.5 km away)";
       }
 
       setMessages(prev => [
@@ -539,6 +567,19 @@ export default function App() {
     simulateAiReply(issue);
   };
 
+  // Book Now handler - opens booking modal with service details
+  const handleBookService = (serviceName: string, price: number) => {
+    setBookingService({ name: serviceName, price });
+    setShowBookingModal(true);
+  };
+
+  // Handle booking confirmed
+  const handleBookingConfirmed = (booking: any) => {
+    setShowBookingModal(false);
+    setNotificationCount(prev => prev + 1);
+    alert(`Booking Confirmed!\n\nBooking ID: ${booking.id}\nService: ${booking.service_name}\nPrice: ₹${booking.price.toLocaleString('en-IN')}\n\nYou will receive a confirmation shortly.`);
+  };
+
 
 
   return (
@@ -585,7 +626,7 @@ export default function App() {
                 
                 {/* SOS Button always visible */}
                 <button 
-                  onClick={() => handleQuickIssueSelect('General Emergency SOS')}
+                  onClick={() => setShowEmergencyModal(true)}
                   className="btn btn-emergency" 
                   style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
                 >
@@ -701,6 +742,20 @@ export default function App() {
               >
                 ❓ Help & Support
               </button>
+              <button 
+                onClick={() => setActiveDashboardTab('myBookings')}
+                className={`btn ${activeDashboardTab === 'myBookings' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
+              >
+                📋 My Bookings
+              </button>
+              <button 
+                onClick={() => setCurrentView('admin')}
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
+              >
+                ⚙️ Admin Panel
+              </button>
             </div>
 
             {/* TAB PANEL 1: HOME PANEL */}
@@ -751,36 +806,79 @@ export default function App() {
                         <button onClick={() => handleQuickIssueSelect('Flat Tire')} className={`db-issue-btn ${selectedIssue === 'Flat Tire' ? 'active' : ''}`}>
                           <div className="db-issue-icon">🔧</div>
                           <span>Flat Tire</span>
+                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹699</span>
                         </button>
                         <button onClick={() => handleQuickIssueSelect('Dead Battery')} className={`db-issue-btn ${selectedIssue === 'Dead Battery' ? 'active' : ''}`}>
                           <div className="db-issue-icon">🔋</div>
                           <span>Battery Dead</span>
+                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹999</span>
                         </button>
                         <button onClick={() => handleQuickIssueSelect('Fuel Empty')} className={`db-issue-btn ${selectedIssue === 'Fuel Empty' ? 'active' : ''}`}>
                           <div className="db-issue-icon">⛽</div>
                           <span>Fuel Empty</span>
+                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹799</span>
                         </button>
                         <button onClick={() => handleQuickIssueSelect('Engine Overheat')} className={`db-issue-btn ${selectedIssue === 'Engine Overheat' ? 'active' : ''}`}>
                           <div className="db-issue-icon">💨</div>
                           <span>Engine Smoke</span>
+                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹1,499</span>
                         </button>
                         <button onClick={() => handleQuickIssueSelect('Vehicle Accident')} className={`db-issue-btn ${selectedIssue === 'Vehicle Accident' ? 'active' : ''}`}>
                           <div className="db-issue-icon">🚨</div>
                           <span>Accident</span>
+                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹1,999</span>
                         </button>
                         <button onClick={() => handleQuickIssueSelect('Car Towing')} className={`db-issue-btn ${selectedIssue === 'Car Towing' ? 'active' : ''}`}>
                           <div className="db-issue-icon">🚛</div>
                           <span>Towing</span>
+                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹1,999</span>
                         </button>
                         <button onClick={() => handleQuickIssueSelect('Lockout Bypass')} className={`db-issue-btn ${selectedIssue === 'Lockout Bypass' ? 'active' : ''}`}>
                           <div className="db-issue-icon">🔓</div>
                           <span>Locked Out</span>
+                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹899</span>
                         </button>
+                      </div>
+
+                      {/* Service Cards with Book Now buttons */}
+                      <div style={{ marginTop: '1.5rem' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>QUICK BOOK SERVICES:</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                          {[
+                            { name: 'Flat Tire Repair', price: 699, icon: '🔧', eta: '15-20 min' },
+                            { name: 'Battery Jump Start', price: 999, icon: '🔋', eta: '10-15 min' },
+                            { name: 'Fuel Delivery', price: 799, icon: '⛽', eta: '20-25 min' },
+                            { name: 'Engine Breakdown Diagnosis', price: 1499, icon: '🔍', eta: '20-30 min' },
+                            { name: 'Car Towing', price: 1999, icon: '🚛', eta: '25-35 min' },
+                            { name: 'Lockout Assistance', price: 899, icon: '🔓', eta: '10-15 min' },
+                          ].map(s => (
+                            <div key={s.name} style={{
+                              background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '1rem',
+                              border: '1px solid var(--border-light)',
+                            }}>
+                              <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{s.icon}</div>
+                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{s.name}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.25rem 0' }}>ETA: {s.eta}</div>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#22c55e', marginBottom: '0.75rem' }}>₹{s.price.toLocaleString('en-IN')}</div>
+                              <button 
+                                onClick={() => handleBookService(s.name, s.price)}
+                                style={{
+                                  width: '100%', padding: '0.5rem', borderRadius: '8px',
+                                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                                  color: '#fff', border: 'none', fontWeight: 700, fontSize: '0.8rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Book Now →
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
 
                       <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center' }}>
                         <button 
-                          onClick={() => handleQuickIssueSelect('General SOS Emergency')}
+                          onClick={() => setShowEmergencyModal(true)}
                           className="btn btn-emergency"
                           style={{ padding: '1rem 2.5rem', width: '100%', maxWidth: '350px' }}
                         >
@@ -828,7 +926,7 @@ export default function App() {
                           <span className="db-stat-lbl">Avg Response Time</span>
                         </div>
                         <div className="db-stat-box">
-                          <span className="db-stat-num">$140</span>
+                          <span className="db-stat-num">₹14,000</span>
                           <span className="db-stat-lbl">Money Saved (AI Diagnostics)</span>
                         </div>
                         <div className="db-stat-box">
@@ -951,7 +1049,11 @@ export default function App() {
             {/* TAB PANEL 3: AI DIAGNOSER CHAT */}
             {activeDashboardTab === 'chat' && (
               <div className="animate-slide-up">
-                <AIAssistant />
+                <AIAssistant 
+                  onBookService={(serviceName, price) => {
+                    handleBookService(serviceName, price);
+                  }}
+                />
               </div>
             )}
 
@@ -980,6 +1082,13 @@ export default function App() {
             {activeDashboardTab === 'notifications' && (
               <div className="animate-slide-up">
                 <NotificationsCenter />
+              </div>
+            )}
+
+            {/* TAB PANEL 8: MY BOOKINGS */}
+            {activeDashboardTab === 'myBookings' && (
+              <div className="animate-slide-up">
+                <MyBookings />
               </div>
             )}
 
@@ -1029,6 +1138,13 @@ export default function App() {
               <span>❓</span>
               <span>Help</span>
             </button>
+            <button 
+              onClick={() => setActiveDashboardTab('myBookings')}
+              className={`mobile-bottom-tab ${activeDashboardTab === 'myBookings' ? 'active' : ''}`}
+            >
+              <span>📋</span>
+              <span>Bookings</span>
+            </button>
           </div>
 
         </div>
@@ -1058,6 +1174,26 @@ export default function App() {
             setActiveDashboardTab('dispatch');
           }}
         />
+      ) : currentView === 'emergencyTrack' ? (
+        /* ==========================================
+           EMERGENCY SOS TRACKING PAGE
+           ========================================== */
+        <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', minHeight: '80vh', fontFamily: "'Inter', sans-serif" }}>
+          {activeEmergencyId && (
+            <EmergencyTracking 
+              emergencyId={activeEmergencyId} 
+              onBack={() => {
+                setCurrentView('dashboard');
+                setActiveDashboardTab('home');
+              }} 
+            />
+          )}
+        </div>
+      ) : currentView === 'admin' ? (
+        /* ==========================================
+           ADMIN DASHBOARD
+           ========================================== */
+        <AdminDashboard onLogout={() => setCurrentView('landing')} />
       ) : currentView !== 'landing' ? (
         /* ==========================================
            AUTHENTICATION VIEW (SPLIT-SCREEN LOGIN/SIGNUP)
@@ -1662,7 +1798,7 @@ export default function App() {
         <>
           {/* Header */}
           <header className={`navbar-header ${scrolled ? 'scrolled' : ''}`}>
-            <div className="container navbar-container">
+            <div className="navbar-container">
               <a href="#home" className="navbar-logo" onClick={() => setCurrentView('landing')}>
                 <span className="navbar-logo-icon" style={{ fontSize: '1.6rem' }}>🚨</span>
                 <span style={{ color: 'var(--primary)' }}>Road</span>
@@ -1670,71 +1806,90 @@ export default function App() {
               </a>
 
               <nav className="navbar-menu">
-                <li><a href="#home" className="navbar-link">Home</a></li>
-                <li><a href="#features" className="navbar-link">Features</a></li>
-                <li><a href="#services" className="navbar-link">Services</a></li>
-                <li><a href="#how-it-works" className="navbar-link">How It Works</a></li>
-                <li><a href="#reviews" className="navbar-link">Reviews</a></li>
-                <li><a href="#faq" className="navbar-link">FAQ</a></li>
-                <li><a href="#contact" className="navbar-link">Contact</a></li>
+                {[
+                  { id: 'home', label: 'Home' },
+                  { id: 'features', label: 'Features' },
+                  { id: 'services', label: 'Services' },
+                  { id: 'how-it-works', label: 'How It Works' },
+                  { id: 'reviews', label: 'Reviews' },
+                  { id: 'faq', label: 'FAQ' },
+                  { id: 'contact', label: 'Contact' },
+                ].map((item) => (
+                  <li key={item.id}>
+                    <a
+                      href={`#${item.id}`}
+                      className={`navbar-link ${activeSection === item.id ? 'active' : ''}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setMobileMenuOpen(false);
+                        const el = document.getElementById(item.id);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
+                    >
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
               </nav>
 
               <div className="navbar-actions">
                 <button onClick={toggleTheme} className="theme-toggle-btn" title="Toggle Light/Dark Theme">
                   {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
                 </button>
-                
-                <button 
-                  onClick={() => setCurrentView('login')} 
-                  className="navbar-link cursor-pointer" 
-                  style={{ background: 'none', border: 'none', fontWeight: 600, fontSize: '0.95rem' }}
+
+                <button
+                  onClick={() => setCurrentView('login')}
+                  className="navbar-login-btn"
                 >
                   Login
                 </button>
-                <button 
-                  onClick={() => setCurrentView('signup')} 
-                  className="btn btn-secondary cursor-pointer"
+                <button
+                  onClick={() => setCurrentView('signup')}
+                  className="btn btn-secondary"
                 >
                   Sign Up
                 </button>
-                <a href="#emergency" className="btn btn-emergency cursor-pointer">🚨 Emergency SOS</a>
+                <a href="#emergency" className="btn btn-emergency">🚨 Emergency SOS</a>
               </div>
 
-              <button 
+              <button
                 className="mobile-nav-toggle"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label="Toggle navigation menu"
               >
-                {mobileMenuOpen ? <X /> : <Menu />}
+                {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
               </button>
             </div>
 
-            {/* Mobile Navigation Drawer */}
             {mobileMenuOpen && (
-              <div className="mobile-menu-drawer" style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                right: 0,
-                background: 'var(--light-bg)',
-                borderBottom: '1px solid var(--border-light)',
-                padding: '1.5rem',
-                boxShadow: 'var(--shadow-lg)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1rem',
-                zIndex: 999
-              }}>
-                <a href="#home" onClick={() => setMobileMenuOpen(false)}>Home</a>
-                <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
-                <a href="#services" onClick={() => setMobileMenuOpen(false)}>Services</a>
-                <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
-                <a href="#reviews" onClick={() => setMobileMenuOpen(false)}>Reviews</a>
-                <a href="#faq" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
-                <a href="#contact" onClick={() => setMobileMenuOpen(false)}>Contact</a>
-                <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <button onClick={() => { setCurrentView('login'); setMobileMenuOpen(false); }} className="btn btn-secondary" style={{ width: '100%' }}>Login</button>
-                  <a href="#emergency" className="btn btn-emergency" style={{ width: '100%' }}>🚨 Emergency SOS</a>
+              <div className="mobile-menu-drawer">
+                {[
+                  { id: 'home', label: 'Home' },
+                  { id: 'features', label: 'Features' },
+                  { id: 'services', label: 'Services' },
+                  { id: 'how-it-works', label: 'How It Works' },
+                  { id: 'reviews', label: 'Reviews' },
+                  { id: 'faq', label: 'FAQ' },
+                  { id: 'contact', label: 'Contact' },
+                ].map((item) => (
+                  <a
+                    key={item.id}
+                    href={`#${item.id}`}
+                    className={activeSection === item.id ? 'active' : ''}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setMobileMenuOpen(false);
+                      const el = document.getElementById(item.id);
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                  >
+                    {item.label}
+                  </a>
+                ))}
+                <hr className="mobile-divider" />
+                <div className="mobile-actions">
+                  <button onClick={() => { setCurrentView('login'); setMobileMenuOpen(false); }} className="btn btn-secondary">Login</button>
+                  <a href="#emergency" className="btn btn-emergency">🚨 Emergency SOS</a>
                 </div>
               </div>
             )}
@@ -1911,9 +2066,9 @@ export default function App() {
                   </ul>
                   <div className="service-meta">
                     <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">12 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">$49+</span></div>
+                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹699</span></div>
                   </div>
-                  <a href="#emergency" className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem' }}>Book Now</a>
+                  <button onClick={() => handleBookService('Flat Tire Repair', 699)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.1s' }}>
@@ -1926,24 +2081,24 @@ export default function App() {
                   </ul>
                   <div className="service-meta">
                     <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">10 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">$59+</span></div>
+                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹999</span></div>
                   </div>
-                  <a href="#emergency" className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem' }}>Book Now</a>
+                  <button onClick={() => handleBookService('Battery Jump Start', 999)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
                   <div className="service-icon-box"><Compass size={24} /></div>
                   <h3 className="service-title">Fuel Delivery</h3>
-                  <p className="service-description">Emergency delivery of unleaded fuel or diesel directly to your locked location on the highway.</p>
+                  <p className="service-description">Emergency delivery of fuel directly to your locked location on the highway.</p>
                   <ul className="service-features-list">
-                    <li className="service-feature-item"><Check size={14} /> 2 Gallons Included</li>
-                    <li className="service-feature-item"><Check size={14} /> Unleaded & Diesel</li>
+                    <li className="service-feature-item"><Check size={14} /> 5 Liters Included</li>
+                    <li className="service-feature-item"><Check size={14} /> Petrol & Diesel</li>
                   </ul>
                   <div className="service-meta">
                     <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">15 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">$39+</span></div>
+                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹799 + fuel</span></div>
                   </div>
-                  <a href="#emergency" className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem' }}>Book Now</a>
+                  <button onClick={() => handleBookService('Fuel Delivery', 799)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up">
@@ -1956,9 +2111,9 @@ export default function App() {
                   </ul>
                   <div className="service-meta">
                     <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">18 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">$89+</span></div>
+                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹1,499</span></div>
                   </div>
-                  <a href="#emergency" className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem' }}>Book Now</a>
+                  <button onClick={() => handleBookService('Engine Breakdown Diagnosis', 1499)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.1s' }}>
@@ -1966,14 +2121,14 @@ export default function App() {
                   <h3 className="service-title">Car Towing</h3>
                   <p className="service-description">Premium flatbed or wheel-lift towing to your home, a local dealer, or our nearest service garage.</p>
                   <ul className="service-features-list">
-                    <li className="service-feature-item"><Check size={14} /> First 5 Miles Included</li>
-                    <li className="service-feature-item"><Check size={14} /> Low Clearance Flatbeds</li>
+                    <li className="service-feature-item"><Check size={14} /> First 10 km Included</li>
+                    <li className="service-feature-item"><Check size={14} /> ₹35/km after 10 km</li>
                   </ul>
                   <div className="service-meta">
                     <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">20 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">$99+</span></div>
+                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹1,999</span></div>
                   </div>
-                  <a href="#emergency" className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem' }}>Book Now</a>
+                  <button onClick={() => handleBookService('Car Towing', 1999)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
@@ -1986,9 +2141,9 @@ export default function App() {
                   </ul>
                   <div className="service-meta">
                     <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">12 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">$59+</span></div>
+                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹899</span></div>
                   </div>
-                  <a href="#emergency" className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem' }}>Book Now</a>
+                  <button onClick={() => handleBookService('Lockout Assistance', 899)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
                 </div>
               </div>
             </div>
@@ -2582,7 +2737,7 @@ export default function App() {
                 Skip the forms. Get connected with a verified mobile mechanic, battery charger, or tow specialist in under 5 minutes.
               </p>
               <button 
-                onClick={startMapSimulation} 
+                onClick={() => setShowEmergencyModal(true)}
                 className="btn btn-emergency btn-lg cursor-pointer"
                 style={{ fontSize: '1.3rem', padding: '1.2rem 2.5rem' }}
               >
@@ -2676,6 +2831,26 @@ export default function App() {
           </button>
         </>
       )}
+
+      {/* Booking Modal */}
+      <BookingModal
+        isOpen={showBookingModal}
+        onClose={() => setShowBookingModal(false)}
+        serviceName={bookingService.name}
+        price={bookingService.price}
+        onBookingConfirmed={handleBookingConfirmed}
+      />
+
+      {/* Emergency SOS Booking Modal */}
+      <EmergencyBookingModal
+        isOpen={showEmergencyModal}
+        onClose={() => setShowEmergencyModal(false)}
+        onSuccess={(emergency) => {
+          setShowEmergencyModal(false);
+          setActiveEmergencyId(emergency.id);
+          setCurrentView('emergencyTrack');
+        }}
+      />
     </>
   );
 }

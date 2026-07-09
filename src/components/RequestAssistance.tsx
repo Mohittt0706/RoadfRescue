@@ -219,7 +219,7 @@ export default function RequestAssistance({
       const timer = setTimeout(() => {
         setAiReport({
           issue: `${problem} - AI Diagnostic Analysis`,
-          cost: problem === 'Flat Tire' ? '$79.00 - $95.00' : problem === 'Battery Dead' ? '$49.00' : '$89.00 - $140.00',
+          cost: problem === 'Flat Tire' ? '₹699' : problem === 'Battery Dead' ? '₹999' : problem === 'Fuel Empty' ? '₹799 + fuel cost' : problem === 'Locked Out' ? '₹899' : '₹1,499',
           time: problem === 'Flat Tire' ? '15 mins' : '10 mins',
           safety: [
             'Turn off the engine immediately and engage the parking brake.',
@@ -246,14 +246,15 @@ export default function RequestAssistance({
 
   const getCalculatedPrice = () => {
     const serviceFee = selectedMechanic.fee;
-    const distanceFee = parseFloat(selectedMechanic.distance.split(' ')[0]) * 5.5;
-    const taxes = (serviceFee + distanceFee) * 0.18;
+    const distanceKm = parseFloat(selectedMechanic.distance.split(' ')[0]) * 1.609;
+    const distanceFee = Math.round(distanceKm * 35);
+    const taxes = Math.round((serviceFee + distanceFee) * 0.18);
     const total = serviceFee + distanceFee + taxes;
     return {
-      service: serviceFee.toFixed(2),
-      dist: distanceFee.toFixed(2),
-      tax: taxes.toFixed(2),
-      total: total.toFixed(2)
+      service: serviceFee.toLocaleString('en-IN'),
+      dist: distanceFee.toLocaleString('en-IN'),
+      tax: taxes.toLocaleString('en-IN'),
+      total: total.toLocaleString('en-IN')
     };
   };
 
@@ -1049,20 +1050,20 @@ export default function RequestAssistance({
               </span>
               <div className="pricing-breakdown-card">
                 <div className="pricing-line">
-                  <span>Base Mobilization Charge</span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>${priceBreakdown.service}</span>
+                  <span>Base Service Charge</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>₹{priceBreakdown.service}</span>
                 </div>
                 <div className="pricing-line">
-                  <span>Distance fee ({selectedMechanic.distance} @ $5.50/mi)</span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>${priceBreakdown.dist}</span>
+                  <span>Distance Charge ({selectedMechanic.distance} @ ₹35/km)</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>₹{priceBreakdown.dist}</span>
                 </div>
                 <div className="pricing-line">
-                  <span>GST/Taxes (18%)</span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>${priceBreakdown.tax}</span>
+                  <span>GST (18%)</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>₹{priceBreakdown.tax}</span>
                 </div>
                 <div className="pricing-line total">
                   <span>Total Estimated Price</span>
-                  <span style={{ color: 'var(--primary)' }}>${priceBreakdown.total}</span>
+                  <span style={{ color: 'var(--primary)' }}>₹{priceBreakdown.total}</span>
                 </div>
                 
                 <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.4, marginTop: '1rem', textAlign: 'center' }}>
@@ -1157,7 +1158,7 @@ export default function RequestAssistance({
               </div>
               <div>
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', fontWeight: 700 }}>ESTIMATED COST</span>
-                <span style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--success)' }}>${priceBreakdown.total}</span>
+                <span style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--success)' }}>₹{priceBreakdown.total}</span>
               </div>
             </div>
 

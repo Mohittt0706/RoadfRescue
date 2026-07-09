@@ -1,29 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Sparkles, 
-  Mic, 
-  Upload, 
-  Send, 
-  Search, 
-  Trash2, 
-  Edit2, 
-  Plus, 
-  X, 
-  Volume2, 
-  RefreshCw, 
-  Camera, 
-  ChevronRight, 
-  Info,
-  CheckCircle
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Mic, Upload, Send, Search, Trash2, Edit2, Plus, Volume2,
+  RefreshCw, Camera, Info, CheckCircle, Square, Copy,
+  MessageSquare, Paperclip
 } from 'lucide-react';
+import { streamChat, analyzeImage } from '../api';
+import BookingModal from './BookingModal';
+
+interface AIAssistantProps {
+  onBookService?: (serviceName: string, price: number) => void;
+}
 
 interface Message {
   id: string;
   text: string;
   sender: 'ai' | 'user';
   time: string;
-  status?: 'sent' | 'read';
+  status?: 'sent' | 'delivered' | 'read';
   imageSrc?: string;
+  imageFileName?: string;
   isDiagnostic?: boolean;
   diagnosisData?: {
     issue: string;
@@ -32,6 +27,8 @@ interface Message {
     time: string;
     advice: string;
   };
+  recommendedService?: { name: string; price: number; eta: string };
+  isStreaming?: boolean;
 }
 
 interface Conversation {
@@ -41,668 +38,512 @@ interface Conversation {
   messages: Message[];
 }
 
-export default function AIAssistant() {
-  /* --- Tab Control inside AI Hub --- */
-  const [activeTab, setActiveTab] = useState<'chat' | 'vision' | 'telemetry' | 'safety'>('chat');
-  
-  /* --- Conversations / History State --- */
-  const [conversations, setConversations] = useState<Conversation[]>([
-    {
-      id: 'conv-1',
-      title: '🔋 Dead Battery Diagnosis',
-      timestamp: 'Today',
-      messages: [
-        { id: '1', text: "Hello! I am your AI Roadside Assistant. What is the current issue with your vehicle? Select one of the presets or describe it in detail below.", sender: 'ai', time: '10:30 AM', status: 'read' },
-        { id: '2', text: "My battery is dead. Car won't start.", sender: 'user', time: '10:31 AM', status: 'read' },
-        { 
-          id: '3', 
-          text: "🔍 AI DIAGNOSIS: Vehicle battery voltage critical. Requires jump start or battery replacement.\n\nMatching dispatcher carries premium replacement batteries compatible with your model.", 
-          sender: 'ai', 
-          time: '10:31 AM', 
-          status: 'read',
-          isDiagnostic: true,
-          diagnosisData: {
-            issue: "Voltage Under 11.2V (Dead Cell)",
-            confidence: 94,
-            cost: "$85 - $130",
-            time: "15 min dispatch",
-            advice: "Turn off all electronics (lights, radio, AC) immediately. Do not crank repeatedly as it can damage your starter motor."
-          }
-        }
-      ]
-    },
-    {
-      id: 'conv-2',
-      title: '🔧 Flat Tire Emergency',
-      timestamp: 'Yesterday',
-      messages: [
-        { id: '1', text: "Hello! I am your AI Roadside Assistant. What is the current issue with your vehicle?", sender: 'ai', time: 'Yesterday', status: 'read' }
-      ]
-    },
-    {
-      id: 'conv-3',
-      title: '💨 Engine Overheating Check',
-      timestamp: 'Previous Week',
-      messages: [
-        { id: '1', text: "Engine temperature gauge is high.", sender: 'user', time: 'Last Wed', status: 'read' }
-      ]
+const SERVICES_MAP: Record<string, { price: number; icon: string; eta: string }> = {
+  'Flat Tire Repair': { price: 700, icon: '🔧', eta: '15-20 min' },
+  'Battery Jump Start': { price: 1000, icon: '🔋', eta: '10-15 min' },
+  'Fuel Delivery': { price: 800, icon: '⛽', eta: '20-25 min' },
+  'Car Towing': { price: 2000, icon: '🚛', eta: '25-35 min' },
+  'Engine Diagnosis': { price: 1500, icon: '🔍', eta: '20-30 min' },
+  'Lockout Assistance': { price: 900, icon: '🔓', eta: '10-15 min' },
+};
+
+const SUGGESTED_PROMPTS = [
+  { text: 'My car battery is dead', icon: '🔋' },
+  { text: 'I have a flat tyre', icon: '🔧' },
+  { text: 'Engine is overheating and smoking', icon: '💨' },
+  { text: 'I need emergency towing', icon: '🚛' },
+  { text: 'I locked my keys in the car', icon: '🔓' },
+  { text: 'My car ran out of fuel', icon: '⛽' },
+];
+
+function parseMarkdown(text: string): React.ReactNode[] {
+  const lines = text.split('\n');
+  return lines.map((line, i) => {
+    let processed: React.ReactNode = line;
+    if (line.match(/^\s*[-*]\s/)) {
+      processed = <li key={i} style={{ marginLeft: '1rem', marginBottom: '2px' }}>{line.replace(/^\s*[-*]\s/, '')}</li>;
+    } else if (line.match(/^#{1,3}\s/)) {
+      processed = <strong key={i} style={{ fontSize: '1.05em' }}>{line.replace(/^#{1,3}\s/, '')}</strong>;
     }
-  ]);
-  
-  const [activeConvId, setActiveConvId] = useState<string>('conv-1');
+    if (typeof processed === 'string') {
+      const boldParts = processed.split(/\*\*(.*?)\*\*/g);
+      if (boldParts.length > 1) {
+        processed = <span key={i}>{boldParts.map((part, j) => j % 2 === 1 ? <strong key={j}>{part}</strong> : part)}</span>;
+      }
+    }
+    return <React.Fragment key={i}>{processed}{i < lines.length - 1 ? <br /> : null}</React.Fragment>;
+  });
+}
+
+function parseServiceRecommendation(text: string): { cleanText: string; service?: { name: string; price: number; eta: string } } {
+  const pattern = /\[RECOMMEND_SERVICE:(.*?)\|(\d+)\|?(.*?)\]/;
+  const match = text.match(pattern);
+  if (match) {
+    const name = match[1].trim();
+    const price = parseInt(match[2], 10);
+    const eta = match[3] || SERVICES_MAP[name]?.eta || '15 min';
+    const cleanText = text.replace(pattern, '').trim();
+    return { cleanText, service: { name, price, eta } };
+  }
+  return { cleanText: text };
+}
+
+const now = () => new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+const WELCOME_MESSAGE: Message = {
+  id: 'welcome-1',
+  text: "Hello! I am your **RoadRescue AI Assistant** powered by GPT-4. I can help diagnose vehicle issues, recommend services, and connect you with nearby mechanics.\n\nYou can type your issue, upload a photo, or use voice commands. How can I help you today?",
+  sender: 'ai',
+  time: now(),
+  status: 'read',
+};
+
+export default function AIAssistant({ onBookService }: AIAssistantProps) {
+  const [activeTab, setActiveTab] = useState<'chat' | 'vision' | 'telemetry' | 'safety'>('chat');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string>('');
   const [searchHistoryQuery, setSearchHistoryQuery] = useState('');
-  
-  /* --- Chat Interface States --- */
   const [chatInput, setChatInput] = useState('');
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  
-  /* --- Voice Assistant States --- */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
-  const [selectedLanguage, setSelectedLanguage] = useState<'en' | 'es' | 'hi'>('en');
+  const [selectedLanguage, setSelectedLanguage] = useState<'en' | 'hi'>('en');
   const [speechSynthesisActive, setSpeechSynthesisActive] = useState(false);
-  
-  /* --- AI Image Diagnosis States --- */
+
   const [isScanning, setIsScanning] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [uploadedImageName, setUploadedImageName] = useState('');
-  const [visionDiagnosisResult, setVisionDiagnosisResult] = useState<{
-    issue: string;
-    confidence: number;
-    cost: string;
-    time: string;
-    advice: string;
-  } | null>(null);
-  
-  /* --- Dashboard warning light grid states --- */
-  const [activeWarningLight, setActiveWarningLight] = useState<string | null>(null);
-  
-  /* --- Repair Cost Estimator States --- */
-  const [estimatorBrand, setEstimatorBrand] = useState('Tesla');
-  const [estimatorModel, setEstimatorModel] = useState('Model Y');
-  const [estimatorProblem, setEstimatorProblem] = useState('Battery Dead');
-  const [estimatorCity, setEstimatorCity] = useState('Boston');
-  const [estimationData, setEstimationData] = useState({
-    parts: 120,
-    labor: 85,
-    duration: '30-45 mins',
-    range: '$190 - $225'
-  });
-  
-  /* --- Vehicle Health Report State --- */
-  const [healthMetrics, setHealthMetrics] = useState({
-    battery: 88,
-    tire: 92,
-    engine: 98,
-    oil: 74,
-    brake: 85,
-    coolant: 90
-  });
+  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [visionResult, setVisionResult] = useState<{ issue: string; confidence: number; cost: string; time: string; advice: string } | null>(null);
+
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingService, setBookingService] = useState({ name: '', price: 0 });
+
+  const [healthMetrics, setHealthMetrics] = useState({ battery: 88, tire: 92, engine: 98, oil: 74, brake: 85, coolant: 90 });
   const [isHealthScanning, setIsHealthScanning] = useState(false);
 
-  /* --- Glowing Orb Canvas Animation --- */
+  const [estimatorBrand, setEstimatorBrand] = useState('Tata');
+  const [estimatorModel, setEstimatorModel] = useState('Nexon');
+  const [estimatorProblem, setEstimatorProblem] = useState('Battery Dead');
+  const [estimatorCity, setEstimatorCity] = useState('Ahmedabad');
+  const [estimationData, setEstimationData] = useState({ parts: 0, labor: 0, duration: '30-45 mins', range: '₹800 - ₹1,200' });
+
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [renamingConvId, setRenamingConvId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+
+  const currentConv = conversations.find(c => c.id === activeConvId) || conversations[0];
+
+  useEffect(() => {
+    const saved = localStorage.getItem('roadrescue-conversations');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Conversation[];
+        if (parsed.length > 0) {
+          setConversations(parsed);
+          setActiveConvId(parsed[0].id);
+          return;
+        }
+      } catch { }
+    }
+    const id = 'conv-' + Date.now();
+    const initial: Conversation = {
+      id,
+      title: 'New Diagnostic Chat',
+      timestamp: 'Today',
+      messages: [WELCOME_MESSAGE],
+    };
+    setConversations([initial]);
+    setActiveConvId(id);
+  }, []);
+
+  useEffect(() => {
+    if (conversations.length > 0) {
+      localStorage.setItem('roadrescue-conversations', JSON.stringify(conversations));
+    }
+  }, [conversations]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversations, activeConvId, isAiTyping, streamingText]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
-    let animationFrameId: number;
-    let width = (canvas.width = 160);
-    let height = (canvas.height = 160);
-    let time = 0;
-    
-    // Particle system inside orb
+    let animId: number;
+    let t = 0;
     const particles: Array<{ x: number; y: number; r: number; speed: number; angle: number; color: string }> = [];
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 18; i++) {
       particles.push({
-        x: width / 2 + (Math.random() - 0.5) * 40,
-        y: height / 2 + (Math.random() - 0.5) * 40,
+        x: 80 + (Math.random() - 0.5) * 40,
+        y: 80 + (Math.random() - 0.5) * 40,
         r: Math.random() * 2 + 1,
         speed: Math.random() * 0.5 + 0.2,
         angle: Math.random() * Math.PI * 2,
-        color: Math.random() > 0.5 ? '#8B5CF6' : '#2563EB'
+        color: Math.random() > 0.5 ? '#8B5CF6' : '#2563EB',
       });
     }
-
     const draw = () => {
-      ctx.clearRect(0, 0, width, height);
-      time += 0.02;
-      
-      const centerX = width / 2;
-      const centerY = height / 2;
-      
-      // Outer atmospheric glow glow rings
-      const pulseFactor = 1 + Math.sin(time * 3) * 0.05 * (isVoiceListening ? 2.5 : 1);
-      
-      // Draw outer glowing shadows
-      const glowGrad = ctx.createRadialGradient(centerX, centerY, 15, centerX, centerY, 60 * pulseFactor);
-      glowGrad.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
-      glowGrad.addColorStop(0.4, 'rgba(37, 99, 235, 0.25)');
-      glowGrad.addColorStop(0.8, 'rgba(139, 92, 246, 0.05)');
-      glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = glowGrad;
+      ctx.clearRect(0, 0, 160, 160);
+      t += 0.02;
+      const cx = 80, cy = 80;
+      const pulse = 1 + Math.sin(t * 3) * 0.05 * (isVoiceListening ? 2.5 : 1);
+      const glow = ctx.createRadialGradient(cx, cy, 15, cx, cy, 60 * pulse);
+      glow.addColorStop(0, 'rgba(139,92,246,0.4)');
+      glow.addColorStop(0.4, 'rgba(37,99,235,0.25)');
+      glow.addColorStop(0.8, 'rgba(139,92,246,0.05)');
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 70 * pulseFactor, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 70 * pulse, 0, Math.PI * 2);
       ctx.fill();
-      
-      // Draw central orb core
-      const coreGrad = ctx.createRadialGradient(centerX - 10, centerY - 10, 5, centerX, centerY, 35);
-      coreGrad.addColorStop(0, '#ffffff');
-      coreGrad.addColorStop(0.3, '#93c5fd');
-      coreGrad.addColorStop(0.7, '#2563eb');
-      coreGrad.addColorStop(1, '#6d28d9');
-      
-      ctx.fillStyle = coreGrad;
+      const core = ctx.createRadialGradient(cx - 10, cy - 10, 5, cx, cy, 35);
+      core.addColorStop(0, '#ffffff');
+      core.addColorStop(0.3, '#93c5fd');
+      core.addColorStop(0.7, '#2563eb');
+      core.addColorStop(1, '#6d28d9');
+      ctx.fillStyle = core;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 38, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 38, 0, Math.PI * 2);
       ctx.fill();
-      
-      // Orbiting energy fields
-      ctx.strokeStyle = 'rgba(139, 92, 246, 0.35)';
+      ctx.strokeStyle = 'rgba(139,92,246,0.35)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 48 + Math.sin(time) * 4, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 48 + Math.sin(t) * 4, 0, Math.PI * 2);
       ctx.stroke();
-      
-      // Particles movement
-      particles.forEach((p) => {
+      particles.forEach(p => {
         p.angle += 0.015;
-        p.x = centerX + Math.cos(p.angle) * (30 + Math.sin(time + p.speed) * 10);
-        p.y = centerY + Math.sin(p.angle) * (30 + Math.cos(time + p.speed) * 10);
-        
+        p.x = cx + Math.cos(p.angle) * (30 + Math.sin(t + p.speed) * 10);
+        p.y = cy + Math.sin(p.angle) * (30 + Math.cos(t + p.speed) * 10);
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
       });
-      
-      // Voice wave nodes
       if (isVoiceListening) {
         ctx.strokeStyle = '#22C55E';
         ctx.lineWidth = 2;
         ctx.beginPath();
         for (let a = 0; a < Math.PI * 2; a += 0.2) {
-          const waveHeight = Math.sin(a * 4 + time * 15) * 6;
-          const rx = centerX + Math.cos(a) * (42 + waveHeight);
-          const ry = centerY + Math.sin(a) * (42 + waveHeight);
+          const wh = Math.sin(a * 4 + t * 15) * 6;
+          const rx = cx + Math.cos(a) * (42 + wh);
+          const ry = cy + Math.sin(a) * (42 + wh);
           if (a === 0) ctx.moveTo(rx, ry);
           else ctx.lineTo(rx, ry);
         }
         ctx.closePath();
         ctx.stroke();
       }
-      
-      animationFrameId = requestAnimationFrame(draw);
+      animId = requestAnimationFrame(draw);
     };
-    
     draw();
-    
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
+    return () => cancelAnimationFrame(animId);
   }, [isVoiceListening]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversations, activeConvId, isAiTyping]);
-
-  /* --- Estimator Recalculation logic --- */
-  useEffect(() => {
-    let partsVal = 100;
-    let laborVal = 60;
-    let estDuration = '30-45 mins';
-    
-    const prob = estimatorProblem.toLowerCase();
-    const brand = estimatorBrand.toLowerCase();
-    const city = estimatorCity.toLowerCase();
-    
-    if (prob.includes('battery')) {
-      partsVal = brand.includes('tesla') ? 160 : 90;
-      laborVal = city.includes('boston') || city.includes('new york') ? 95 : 65;
-      estDuration = '20-30 mins';
-    } else if (prob.includes('tire') || prob.includes('flat')) {
-      partsVal = brand.includes('tesla') || brand.includes('bmw') ? 85 : 45;
-      laborVal = 50;
-      estDuration = '15-25 mins';
-    } else if (prob.includes('smoke') || prob.includes('overheat') || prob.includes('engine')) {
-      partsVal = brand.includes('tesla') ? 350 : 220;
-      laborVal = city.includes('boston') || city.includes('new york') ? 140 : 95;
-      estDuration = '1.5 - 3 hours';
-    } else if (prob.includes('brake') || prob.includes('squeal')) {
-      partsVal = 130;
-      laborVal = 80;
-      estDuration = '45-60 mins';
-    } else if (prob.includes('leak') || prob.includes('oil')) {
-      partsVal = 40;
-      laborVal = 70;
-      estDuration = '30-50 mins';
-    }
-    
-    // Scale on Premium Brand
-    if (brand.includes('bmw') || brand.includes('tesla')) {
-      partsVal = Math.round(partsVal * 1.35);
-      laborVal = Math.round(laborVal * 1.25);
-    }
-    
-    const total = partsVal + laborVal;
-    const low = Math.round(total * 0.9);
-    const high = Math.round(total * 1.1);
-    
-    setEstimationData({
-      parts: partsVal,
-      labor: laborVal,
-      duration: estDuration,
-      range: `$${low} - $${high}`
-    });
+    let parts = 100, labor = 60, dur = '30-45 mins';
+    const p = estimatorProblem.toLowerCase(), b = estimatorBrand.toLowerCase();
+    if (p.includes('battery')) { parts = 90; dur = '20-30 min'; }
+    else if (p.includes('tire') || p.includes('flat')) { parts = 50; dur = '15-25 min'; }
+    else if (p.includes('smoke') || p.includes('overheat') || p.includes('engine')) { parts = 220; labor = 95; dur = '1.5-3 hours'; }
+    else if (p.includes('brake')) { parts = 130; labor = 80; dur = '45-60 min'; }
+    else if (p.includes('leak') || p.includes('oil')) { parts = 40; labor = 70; dur = '30-50 min'; }
+    if (b.includes('bmw') || b.includes('mercedes')) { parts = Math.round(parts * 1.35); labor = Math.round(labor * 1.25); }
+    const total = parts + labor;
+    setEstimationData({ parts, labor, duration: dur, range: '\u20B9' + Math.round(total * 0.9).toLocaleString('en-IN') + ' - \u20B9' + Math.round(total * 1.1).toLocaleString('en-IN') });
   }, [estimatorBrand, estimatorModel, estimatorProblem, estimatorCity]);
 
-  /* --- Voice Command Simulation --- */
+  const updateConversation = useCallback((convId: string, updater: (conv: Conversation) => Conversation) => {
+    setConversations(prev => prev.map(c => c.id === convId ? updater(c) : c));
+  }, []);
+
+  const createNewChat = () => {
+    const id = 'conv-' + Date.now();
+    const conv: Conversation = {
+      id,
+      title: 'New Diagnostic Chat',
+      timestamp: 'Today',
+      messages: [WELCOME_MESSAGE],
+    };
+    setConversations(prev => [conv, ...prev]);
+    setActiveConvId(id);
+  };
+
+  const deleteConversation = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConversations(prev => {
+      const filtered = prev.filter(c => c.id !== id);
+      if (activeConvId === id && filtered.length > 0) setActiveConvId(filtered[0].id);
+      return filtered;
+    });
+  };
+
+  const startRename = (id: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingConvId(id);
+    setRenameValue(currentTitle);
+  };
+
+  const confirmRename = () => {
+    if (renamingConvId && renameValue.trim()) {
+      updateConversation(renamingConvId, c => ({ ...c, title: renameValue.trim() }));
+    }
+    setRenamingConvId(null);
+    setRenameValue('');
+  };
+
+  const copyMessage = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
+
+  const speakText = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    if (speechSynthesisActive) {
+      window.speechSynthesis.cancel();
+      setSpeechSynthesisActive(false);
+      return;
+    }
+    const clean = text.replace(/\[RECOMMEND_SERVICE:.*?\]/g, '').replace(/\*\*/g, '').replace(/#{1,3}\s/g, '').replace(/[-*]\s/g, '');
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.lang = selectedLanguage === 'hi' ? 'hi-IN' : 'en-US';
+    utterance.rate = 1.05;
+    utterance.onend = () => setSpeechSynthesisActive(false);
+    utterance.onerror = () => setSpeechSynthesisActive(false);
+    setSpeechSynthesisActive(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopVoice = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsVoiceListening(false);
+  };
+
   const toggleVoiceAssistant = () => {
     if (isVoiceListening) {
-      setIsVoiceListening(false);
-      // Trigger voice processing simulation
+      stopVoice();
       if (voiceTranscript.trim()) {
-        const command = voiceTranscript;
+        const text = voiceTranscript;
         setVoiceTranscript('');
-        handleSendMessage(command);
+        sendMessage(text);
       }
-    } else {
+      return;
+    }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      const samples = selectedLanguage === 'hi'
+        ? ['मेरी गाड़ी का टायर पंचर हो गया है', 'कार की बैटरी काम नहीं कर रही', 'इंजन से धुआं निकल रहा है']
+        : ['My car has a flat tyre', 'The battery is dead, car won\'t start', 'Engine is smoking and overheating'];
+      const picked = samples[Math.floor(Math.random() * samples.length)];
+      let cur = '';
+      let idx = 0;
       setIsVoiceListening(true);
-      setVoiceTranscript('');
-      
-      // Speech recognition simulation or actual Web Speech API
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.lang = selectedLanguage === 'es' ? 'es-ES' : selectedLanguage === 'hi' ? 'hi-IN' : 'en-US';
-        recognition.continuous = false;
-        recognition.interimResults = true;
-        
-        recognition.onresult = (event: any) => {
-          const result = event.results[0][0].transcript;
-          setVoiceTranscript(result);
-        };
-        
-        recognition.onerror = () => {
-          simulateVoiceTimeout();
-        };
-        
-        recognition.onend = () => {
-          setIsVoiceListening(false);
-        };
-        
-        recognition.start();
-      } else {
-        // Fallback simulation
-        simulateVoiceTimeout();
-      }
+      const timer = setInterval(() => {
+        if (idx < picked.length) {
+          cur += picked[idx];
+          setVoiceTranscript(cur);
+          idx++;
+        } else {
+          clearInterval(timer);
+          setTimeout(() => {
+            setIsVoiceListening(false);
+            sendMessage(picked);
+          }, 800);
+        }
+      }, 45);
+      return;
     }
-  };
-
-  const simulateVoiceTimeout = () => {
-    const speechSamples = {
-      en: [
-        "My car has a flat tire, please check nearby mechanics",
-        "The battery of my SUV is dead, can I request a jump start?",
-        "There is oil dripping from my engine, what should I do?"
-      ],
-      es: [
-        "Tengo un neumático desinflado, ayúdame por favor",
-        "Mi batería está muerta, necesito un mecánico",
-        "El motor se está calentando demasiado"
-      ],
-      hi: [
-        "मेरी गाड़ी का टायर पंचर हो गया है, मदद चाहिए",
-        "कार की बैटरी काम नहीं कर रही है, जंप स्टार्ट चाहिए",
-        "इंजन से सफेद धुआं निकल रहा है"
-      ]
+    const recognition = new SpeechRecognition();
+    recognition.lang = selectedLanguage === 'hi' ? 'hi-IN' : 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (event: any) => {
+      setVoiceTranscript(event.results[0][0].transcript);
     };
-    
-    const samples = speechSamples[selectedLanguage];
-    const pickedSample = samples[Math.floor(Math.random() * samples.length)];
-    
-    let currentText = '';
-    let i = 0;
-    const typingTimer = setInterval(() => {
-      if (i < pickedSample.length) {
-        currentText += pickedSample[i];
-        setVoiceTranscript(currentText);
-        i++;
-      } else {
-        clearInterval(typingTimer);
-        setTimeout(() => {
-          setIsVoiceListening(false);
-          handleSendMessage(pickedSample);
-        }, 800);
+    recognition.onerror = () => { setIsVoiceListening(false); };
+    recognition.onend = () => {
+      setIsVoiceListening(false);
+      if (voiceTranscript.trim()) {
+        const text = voiceTranscript;
+        setVoiceTranscript('');
+        sendMessage(text);
       }
-    }, 45);
-  };
-
-  /* --- Text to Speech Simulator --- */
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      if (speechSynthesisActive) {
-        window.speechSynthesis.cancel();
-        setSpeechSynthesisActive(false);
-        return;
-      }
-      
-      const cleanText = text.replace(/🔍|🚨|🛡|🔧|🔋|💵|📍|⏰/g, '').replace(/\*\*|##/g, '');
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = selectedLanguage === 'es' ? 'es-ES' : selectedLanguage === 'hi' ? 'hi-IN' : 'en-US';
-      utterance.rate = 1.05;
-      
-      utterance.onend = () => setSpeechSynthesisActive(false);
-      utterance.onerror = () => setSpeechSynthesisActive(false);
-      
-      setSpeechSynthesisActive(true);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      alert("Voice playback simulated. Speaking: " + text);
-    }
-  };
-
-  /* --- Image Scan Simulation --- */
-  const handleImageUploadSimulation = (category: 'tire' | 'oil' | 'battery' | 'dash') => {
-    setIsScanning(true);
-    setUploadedImageName(category === 'tire' ? 'flat_tire_scan.jpg' : category === 'oil' ? 'oil_drippage_leak.jpg' : category === 'battery' ? 'battery_corroded_terminals.jpg' : 'dashboard_check_engine.jpg');
-    
-    const mockImageUrls = {
-      tire: "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=300",
-      oil: "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=300",
-      battery: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=300",
-      dash: "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=300"
     };
-
-    setUploadedImage(mockImageUrls[category]);
-
-    setTimeout(() => {
-      setIsScanning(false);
-      
-      let res = {
-        issue: "Unknown issue",
-        confidence: 85,
-        cost: "$40 - $100",
-        time: "30 mins",
-        advice: "Stand in safety."
-      };
-      
-      if (category === 'tire') {
-        res = {
-          issue: "Severe Puncture / Side-wall Scuffing detected on front-left tire.",
-          confidence: 97.4,
-          cost: "$49 - $85 (Tire swap/patching)",
-          time: "15 min dispatch ETA",
-          advice: "Do not attempt to drive on a fully deflated tire as it will permanently damage your alloy wheel rim. Park safely and display warning triangle."
-        };
-      } else if (category === 'oil') {
-        res = {
-          issue: "Active Engine Oil Puddle Leak near oil pan casing gaskets.",
-          confidence: 89.1,
-          cost: "$120 - $210 (Gasket seals replacement)",
-          time: "25-30 min mechanics arrival",
-          advice: "Ensure the vehicle is turned off. Low oil levels can cause friction welding of internal engine pistons, causing total engine block destruction. Do not drive."
-        };
-      } else if (category === 'battery') {
-        res = {
-          issue: "Critical Lead-Acid Terminal Acid Corrosion build-up.",
-          confidence: 93.5,
-          cost: "$65 - $115 (Terminal cleaning or replacement)",
-          time: "12 min rapid technician arrival",
-          advice: "Wear safety goggles if checking. Corrosive acid salts can burn skin. Avoid touching with bare hands. Mobile technicians will carry wire brushes and terminal sealants."
-        };
-      } else if (category === 'dash') {
-        res = {
-          issue: "Dashboard Warning Light: Critical Engine Check (Fault Code P0302)",
-          confidence: 96.2,
-          cost: "$90 - $160 diagnostic scanning & tuning",
-          time: "15 min towing or mechanic dispatch",
-          advice: "An active engine light indicates misfiring. If it starts blinking, turn off the engine immediately to protect the catalytic converter. Towing is recommended."
-        };
-      }
-      
-      setVisionDiagnosisResult(res);
-    }, 2500);
+    recognitionRef.current = recognition;
+    setIsVoiceListening(true);
+    setVoiceTranscript('');
+    recognition.start();
   };
 
-  /* --- Warning Light Click Handler --- */
-  const handleWarningLightClick = (lightName: string) => {
-    setActiveWarningLight(lightName);
-  };
-
-  const warningLightsDetails: Record<string, {
-    emoji: string;
-    meaning: string;
-    severity: 'Low' | 'Medium' | 'High' | 'Emergency';
-    colorClass: string;
-    drivable: string;
-    action: string;
-  }> = {
-    'Check Engine': {
-      emoji: '🚨',
-      meaning: 'Engine management computer has detected a fault in emissions, ignition, fuel systems, or sensors.',
-      severity: 'High',
-      colorClass: 'warning',
-      drivable: 'Yes, but only to diagnostic center. Avoid heavy acceleration. If blinking, STOP immediately.',
-      action: 'Check that the gas cap is tightly closed (common sensor trigger). Scan engine OBD-II fault codes at the nearest shop.'
-    },
-    'Battery': {
-      emoji: '🔋',
-      meaning: 'Charging system voltage failure. Alternator is not providing power, and vehicle is running solely on battery reserve.',
-      severity: 'Emergency',
-      colorClass: 'emergency',
-      drivable: 'No. The car will shut down completely in minutes once the battery drains, losing power brakes and steering.',
-      action: 'Turn off all non-essential loads (radio, headlights, AC, seat heaters). Pull off immediately into a safe parking zone.'
-    },
-    'Oil Pressure': {
-      emoji: '🛢️',
-      meaning: 'Engine oil pressure drops below minimum safety thresholds. Lack of lubrication causes terminal metal-on-metal friction.',
-      severity: 'Emergency',
-      colorClass: 'emergency',
-      drivable: 'ABSOLUTELY NOT. Operating the vehicle for even 30 seconds can destroy the engine beyond repair.',
-      action: 'Turn off the ignition key instantly. Check dipstick oil levels. Add oil if empty. If it leaks immediately, call towing.'
-    },
-    'ABS': {
-      emoji: '🚗',
-      meaning: 'Anti-lock Brake System computer has malfunctioned or detected sensor debris. Emergency automatic pump modulation is disabled.',
-      severity: 'Medium',
-      colorClass: 'info',
-      drivable: 'Yes, regular hydraulic brakes will function normally. However, tires can lock and skid during emergency stops.',
-      action: 'Drive carefully and allow double braking distance. Schedule an ABS sensor diagnostic or cleaning service.'
-    },
-    'Airbag': {
-      emoji: '🛡️',
-      meaning: 'Supplemental Restraint System (SRS) fault. Airbag computers have deactivated safety collision bags.',
-      severity: 'Medium',
-      colorClass: 'info',
-      drivable: 'Yes, but safety airbags may fail to deploy, or trigger unexpectedly during a collision.',
-      action: 'Get checking as soon as possible. Avoid front-end bumps. Often triggered by loose sensor plugs under the front seat tracks.'
-    },
-    'Tire Pressure': {
-      emoji: '💨',
-      meaning: 'TPMS system has detected a tire running at least 25% below safety inflation guidelines.',
-      severity: 'Medium',
-      colorClass: 'warning',
-      drivable: 'Yes, but drive slowly (under 40 mph) and proceed directly to an air pump. Handling will feel heavy.',
-      action: 'Visually inspect for nails or flattening. Inflate to door card recommended PSI (usually 32-35 PSI). Reset TPMS light.'
-    },
-    'Brake Warning': {
-      emoji: '🛑',
-      meaning: 'Brake fluid reservoir level is critically low, or parking brake lever sensor is engaged.',
-      severity: 'High',
-      colorClass: 'warning',
-      drivable: 'Extremely high risk. Brakes may lose pressure and pedal can sink to the floor, failing to stop.',
-      action: 'Release parking brake fully. If light stays on, pull over. Check fluid reservoir. Do not drive if brakes feel spongy.'
-    },
-    'Coolant Temp': {
-      emoji: '🌡️',
-      meaning: 'Engine coolant has reached boiling threshold (usually > 230°F). System is pressurized and overheated.',
-      severity: 'Emergency',
-      colorClass: 'emergency',
-      drivable: 'No. Continued driving will warp cylinder heads, blow head gaskets, and cause cylinder cracking.',
-      action: 'Turn heater on to MAX fan speed to vent core block heat. Pull off safely. Do NOT open radiator cap while hot (causes steam burns).'
-    }
-  };
-
-  /* --- Chat Action Handlers --- */
-  const currentConv = conversations.find(c => c.id === activeConvId) || conversations[0];
-
-  const handleSendMessage = (text: string) => {
-    if (!text.trim()) return;
-    
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isAiTyping) return;
+    const convId = activeConvId;
     const userMsg: Message = {
-      id: Math.random().toString(),
-      text: text,
+      id: 'msg-' + Date.now() + '-user',
+      text: text.trim(),
       sender: 'user',
-      time: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-      status: 'sent'
+      time: now(),
+      status: 'sent',
     };
-
-    // Update active conversation
-    setConversations(prev => prev.map(c => {
-      if (c.id === activeConvId) {
-        return {
-          ...c,
-          messages: [...c.messages, userMsg]
-        };
-      }
-      return c;
+    updateConversation(convId, c => ({
+      ...c,
+      messages: [...c.messages, userMsg],
+      title: c.messages.length <= 1 ? text.trim().slice(0, 40) : c.title,
     }));
-
     setChatInput('');
     setIsAiTyping(true);
-    
-    // Simulate AI response stream
-    setTimeout(() => {
-      let responseText = '';
-      let isDiag = false;
-      let diagData: any = undefined;
-      
-      const cleaned = text.toLowerCase();
-      if (cleaned.includes('tire') || cleaned.includes('puncture')) {
-        responseText = "🔍 AI DIAGNOSIS: Standard tire puncture or structural side-wall damage detected.\n\nSafety Advice: Park vehicle in emergency lane, put on hazard warning lights, and step behind safety guard rail immediately.";
-        isDiag = true;
-        diagData = {
-          issue: "Side Puncture (12mm tear)",
-          confidence: 96.8,
-          cost: "$49 - $80",
-          time: "12 min dispatch",
-          advice: "Please do not stand next to active highway traffic. A technician is ready with a matching spare tire."
-        };
-      } else if (cleaned.includes('battery') || cleaned.includes('dead') || cleaned.includes('start')) {
-        responseText = "🔍 AI DIAGNOSIS: Voltage levels have dropped critical. Likely a flat battery due to accessory drain or alternator fault.\n\nSafety Advice: Keep ignition off, avoid cranking repeatedly as it damages the starter.";
-        isDiag = true;
-        diagData = {
-          issue: "Low Voltage / Battery Dead Cell",
-          confidence: 92.4,
-          cost: "$75 - $125",
-          time: "15 min dispatch",
-          advice: "Turn off all headlights and dashboard items. Certified mechanics are close by with jumper systems and battery spares."
-        };
-      } else if (cleaned.includes('smoke') || cleaned.includes('overheat') || cleaned.includes('engine')) {
-        responseText = "🚨 HIGH CRITICAL ALERT: Cooling system malfunction or oil gasket leakage. Running the engine now risks permanent engine seizure.\n\nSafety Advice: Pull over immediately, switch off the ignition, and get to a safe zone behind a guard rail. Dispatching high-capacity tow flatbed.";
-        isDiag = true;
-        diagData = {
-          issue: "Cooling Circuit Failure / Boil-over",
-          confidence: 98.1,
-          cost: "$120 - $220 (Flatbed Towing)",
-          time: "18 min tow truck ETA",
-          advice: "Do not attempt to open the radiator cap until the engine cools for at least 30 minutes. Pressurized steam can cause severe burns."
-        };
-      } else {
-        responseText = "🔍 AI DIAGNOSIS: Custom diagnostic query processed. Your coordinates have been synced to nearby dispatch hubs. Based on description, we recommend connecting with a mobile mechanic to run OBD diagnostics.";
-        isDiag = true;
-        diagData = {
-          issue: "Unspecified engine system code check",
-          confidence: 81.5,
-          cost: "$80 - $140",
-          time: "20 min mechanic ETA",
-          advice: "Check if your dashboard warning lights are on, and upload an image if possible to improve system accuracy."
-        };
-      }
-
-      const aiMsg: Message = {
-        id: Math.random().toString(),
-        text: responseText,
-        sender: 'ai',
-        time: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-        status: 'read',
-        isDiagnostic: isDiag,
-        diagnosisData: diagData
-      };
-
-      setConversations(prev => prev.map(c => {
-        if (c.id === activeConvId) {
-          return {
-            ...c,
-            messages: [...c.messages, aiMsg]
+    setStreamingText('');
+    const controller = new AbortController();
+    setAbortController(controller);
+    const apiMessages = [
+      ...((conversations.find(c => c.id === convId)?.messages || []).filter(m => m.id !== 'welcome-1').map(m => ({
+        sender: m.sender === 'user' ? 'user' : 'assistant',
+        text: m.text,
+      }))),
+      { sender: 'user', text: text.trim() },
+    ];
+    let accumulated = '';
+    try {
+      await streamChat(
+        apiMessages,
+        convId,
+        (chunk) => {
+          accumulated += chunk;
+          setStreamingText(accumulated);
+        },
+        (full) => {
+          const { cleanText, service } = parseServiceRecommendation(full);
+          const aiMsg: Message = {
+            id: 'msg-' + Date.now() + '-ai',
+            text: cleanText,
+            sender: 'ai',
+            time: now(),
+            status: 'read',
+            recommendedService: service,
           };
+          updateConversation(convId, c => ({ ...c, messages: [...c.messages, aiMsg] }));
+          setStreamingText('');
+          setIsAiTyping(false);
+          setAbortController(null);
+        },
+        (err) => {
+          const errMsg: Message = {
+            id: 'msg-' + Date.now() + '-err',
+            text: `Sorry, I encountered an error: ${err}. Please try again.`,
+            sender: 'ai',
+            time: now(),
+            status: 'read',
+          };
+          updateConversation(convId, c => ({ ...c, messages: [...c.messages, errMsg] }));
+          setStreamingText('');
+          setIsAiTyping(false);
+          setAbortController(null);
         }
-        return c;
-      }));
-      
+      );
+    } catch {
       setIsAiTyping(false);
-      
-      // Speak AI response automatically if user used voice
-      if (isVoiceListening) {
-        speakText(responseText);
+      setStreamingText('');
+      setAbortController(null);
+    }
+  }, [activeConvId, conversations, isAiTyping, updateConversation]);
+
+  const stopGeneration = () => {
+    if (abortController) {
+      abortController.abort();
+      if (streamingText) {
+        const { cleanText, service } = parseServiceRecommendation(streamingText);
+        const aiMsg: Message = {
+          id: 'msg-' + Date.now() + '-stopped',
+          text: cleanText + '\n\n*[Generation stopped]*',
+          sender: 'ai',
+          time: now(),
+          status: 'read',
+          recommendedService: service,
+        };
+        updateConversation(activeConvId, c => ({ ...c, messages: [...c.messages, aiMsg] }));
       }
-    }, 1500);
-  };
-
-  const handleStartNewChat = () => {
-    const newId = 'conv-' + Date.now();
-    const newConv: Conversation = {
-      id: newId,
-      title: '🤖 New Diagnostic Chat',
-      timestamp: 'Today',
-      messages: [
-        { 
-          id: '1', 
-          text: "Hello! I am your AI Roadside Assistant. What is the current issue with your vehicle? Select one of the presets or describe it in detail below.", 
-          sender: 'ai', 
-          time: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }), 
-          status: 'read' 
-        }
-      ]
-    };
-    setConversations(prev => [newConv, ...prev]);
-    setActiveConvId(newId);
-  };
-
-  const handleDeleteConversation = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const filtered = conversations.filter(c => c.id !== id);
-    setConversations(filtered);
-    if (activeConvId === id && filtered.length > 0) {
-      setActiveConvId(filtered[0].id);
+      setStreamingText('');
+      setIsAiTyping(false);
+      setAbortController(null);
     }
   };
 
-  const handleRenameConversation = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const currentTitle = conversations.find(c => c.id === id)?.title || '';
-    const newTitle = prompt("Enter new title for conversation:", currentTitle);
-    if (newTitle && newTitle.trim()) {
-      setConversations(prev => prev.map(c => {
-        if (c.id === id) {
-          return { ...c, title: newTitle.trim() };
-        }
-        return c;
+  const regenerateLastResponse = () => {
+    if (!currentConv || currentConv.messages.length < 2) return;
+    const lastUserMsg = [...currentConv.messages].reverse().find(m => m.sender === 'user');
+    if (lastUserMsg) {
+      updateConversation(currentConv.id, c => ({
+        ...c,
+        messages: c.messages.filter(m => m.id !== lastUserMsg.id),
       }));
+      setTimeout(() => sendMessage(lastUserMsg.text), 100);
     }
   };
 
-  /* --- Start Health Scanner --- */
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const dataUrl = URL.createObjectURL(file);
+    setUploadedImage(dataUrl);
+    setUploadedFileName(file.name);
+    setIsScanning(true);
+    setVisionResult(null);
+    try {
+      const result = await analyzeImage(dataUrl, activeConvId);
+      setVisionResult({
+        issue: result.issue || result.diagnosis || 'Issue detected in uploaded image',
+        confidence: result.confidence || result.score || 85,
+        cost: result.cost || result.estimatedCost || '₹800 - ₹1,500',
+        time: result.time || result.eta || '15-20 min',
+        advice: result.advice || result.recommendation || 'Please consult a certified mechanic for detailed inspection.',
+      });
+    } catch {
+      setVisionResult({
+        issue: 'Unable to analyze image via Vision AI. Please try again or describe the issue.',
+        confidence: 0,
+        cost: '₹500 - ₹2,000',
+        time: '15-30 min',
+        advice: 'Try uploading a clearer photo or describe your vehicle issue in the chat.',
+      });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const sendVisionDiagnosis = () => {
+    if (!visionResult) return;
+    const text = `📸 Vision AI Diagnosis:\n\n**Issue:** ${visionResult.issue}\n**Confidence:** ${visionResult.confidence}%\n**Est. Cost:** ${visionResult.cost}\n**Advice:** ${visionResult.advice}\n\nPlease provide more details about this issue.`;
+    sendMessage(text);
+    setUploadedImage(null);
+    setVisionResult(null);
+    setActiveTab('chat');
+  };
+
+  const openBooking = (name: string, price: number) => {
+    if (onBookService) {
+      onBookService(name, price);
+    } else {
+      setBookingService({ name, price });
+      setShowBookingModal(true);
+    }
+  };
+
   const triggerHealthScan = () => {
     setIsHealthScanning(true);
     setHealthMetrics({ battery: 0, tire: 0, engine: 0, oil: 0, brake: 0, coolant: 0 });
-    
     setTimeout(() => {
       setHealthMetrics({
         battery: Math.floor(Math.random() * 20) + 75,
@@ -710,927 +551,538 @@ export default function AIAssistant() {
         engine: Math.floor(Math.random() * 8) + 91,
         oil: Math.floor(Math.random() * 30) + 60,
         brake: Math.floor(Math.random() * 18) + 78,
-        coolant: Math.floor(Math.random() * 12) + 85
+        coolant: Math.floor(Math.random() * 12) + 85,
       });
       setIsHealthScanning(false);
-    }, 2000);
+    }, 2200);
   };
 
-  const filteredHistory = conversations.filter(c => 
+  const filteredHistory = conversations.filter(c =>
     c.title.toLowerCase().includes(searchHistoryQuery.toLowerCase())
   );
 
+  const warningLights = [
+    { name: 'Check Engine', icon: '🔧', severity: 'High' as const, meaning: 'Engine management computer detected a fault in emissions, ignition, or fuel systems.', drivable: 'Yes, but avoid heavy acceleration. If blinking, stop immediately.', action: 'Check gas cap. Scan OBD-II fault codes at nearest shop.' },
+    { name: 'Battery', icon: '🔋', severity: 'Emergency' as const, meaning: 'Charging system voltage failure. Alternator not providing power.', drivable: 'No. Car will shut down in minutes.', action: 'Turn off all loads. Pull off into safe zone immediately.' },
+    { name: 'Oil Pressure', icon: '🛢️', severity: 'Emergency' as const, meaning: 'Engine oil pressure below minimum safety threshold.', drivable: 'NO. Can destroy engine in 30 seconds.', action: 'Turn off ignition instantly. Check dipstick. Call towing.' },
+    { name: 'ABS', icon: '🛑', severity: 'Medium' as const, meaning: 'Anti-lock Brake System malfunction detected.', drivable: 'Yes, but tires can lock during emergency stops.', action: 'Drive carefully. Schedule ABS sensor diagnostic.' },
+    { name: 'Airbag', icon: '🎈', severity: 'Medium' as const, meaning: 'SRS fault. Airbags may not deploy correctly.', drivable: 'Yes, but safety airbags may fail.', action: 'Get checking ASAP. Avoid front-end bumps.' },
+    { name: 'Tire Pressure', icon: '💨', severity: 'Medium' as const, meaning: 'TPMS detected a tire at least 25% below recommended PSI.', drivable: 'Yes, drive slowly under 60 km/h.', action: 'Inspect for nails. Inflate to 32-35 PSI. Reset TPMS.' },
+    { name: 'Brake Warning', icon: '⛔', severity: 'High' as const, meaning: 'Brake fluid critically low or parking brake engaged.', drivable: 'Extremely high risk. Brakes may fail.', action: 'Release parking brake. Check fluid. Do not drive if spongy.' },
+    { name: 'Coolant Temp', icon: '🌡️', severity: 'Emergency' as const, meaning: 'Engine coolant at boiling threshold (>110°C).', drivable: 'No. Will warp cylinder heads.', action: 'Turn heater to MAX. Do NOT open radiator cap when hot.' },
+  ];
+  const [activeWarningLight, setActiveWarningLight] = useState<string | null>(null);
+
+  const severityColor = (s: string) => {
+    if (s === 'Emergency') return '#dc2626';
+    if (s === 'High') return '#d97706';
+    return '#2563eb';
+  };
+
+  const S = (base: Record<string, string | number>): React.CSSProperties => base as React.CSSProperties;
+
+  const style = {
+    wrapper: S({ display: 'flex', height: 'calc(100vh - 140px)', minHeight: '600px', gap: '1rem' }),
+    sidebar: S({ width: '280px', minWidth: '280px', background: 'var(--card-bg, #1a1a2e)', border: '1px solid var(--glass-border, rgba(255,255,255,0.08))', borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
+    sidebarHeader: S({ padding: '1rem', borderBottom: '1px solid var(--border-light, rgba(255,255,255,0.08))', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }),
+    searchBox: S({ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid var(--border-light, rgba(255,255,255,0.08))' }),
+    convList: S({ flex: 1, overflowY: 'auto', padding: '0.25rem' }),
+    convItem: (active: boolean) => S({ padding: '0.6rem 0.75rem', borderRadius: '8px', cursor: 'pointer', background: active ? 'rgba(59,130,246,0.12)' : 'transparent', border: active ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent', marginBottom: '2px', transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }),
+    main: S({ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: 0 }),
+    tabBar: S({ display: 'flex', gap: '0.5rem', background: 'var(--card-bg, #1a1a2e)', border: '1px solid var(--glass-border, rgba(255,255,255,0.08))', borderRadius: '12px', padding: '0.5rem', flexWrap: 'wrap' }),
+    tabBtn: (active: boolean) => S({ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: active ? 800 : 600, background: active ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'rgba(255,255,255,0.04)', color: active ? '#fff' : 'var(--text-secondary, #94a3b8)', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.35rem' }),
+    chatArea: S({ flex: 1, background: 'var(--card-bg, #1a1a2e)', border: '1px solid var(--glass-border, rgba(255,255,255,0.08))', borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }),
+    chatMessages: S({ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem' }),
+    inputBar: S({ padding: '0.75rem 1rem', borderTop: '1px solid var(--border-light, rgba(255,255,255,0.08))', display: 'flex', alignItems: 'center', gap: '0.5rem' }),
+    textInput: S({ flex: 1, padding: '0.65rem 1rem', borderRadius: '10px', border: '1px solid var(--border-light, rgba(255,255,255,0.1))', background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary, #fff)', fontSize: '0.9rem', outline: 'none' }),
+    actionBtn: (active?: boolean) => S({ width: '36px', height: '36px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: active ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.06)', color: active ? '#3b82f6' : 'var(--text-secondary, #94a3b8)', transition: 'all 0.15s' }),
+    sendBtn: S({ width: '36px', height: '36px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff' }),
+    msgBubble: (sender: string) => S({ maxWidth: '80%', padding: '0.75rem 1rem', borderRadius: sender === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', background: sender === 'user' ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'rgba(255,255,255,0.06)', color: 'var(--text-primary, #fff)', fontSize: '0.88rem', lineHeight: '1.55', alignSelf: sender === 'user' ? 'flex-end' : 'flex-start', position: 'relative' }),
+    suggestedPrompt: S({ padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light, rgba(255,255,255,0.1))', background: 'rgba(255,255,255,0.03)', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-secondary, #94a3b8)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '0.5rem' }),
+    card: S({ background: 'var(--card-bg, #1a1a2e)', border: '1px solid var(--glass-border, rgba(255,255,255,0.08))', borderRadius: '16px', padding: '1.25rem' }),
+    badge: (color: string) => S({ fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: color + '22', color, textTransform: 'uppercase' }),
+  };
+
   return (
-    <div className="ai-assistant-wrapper">
-      
-      {/* 1. SIDEBAR CHAT HISTORY */}
-      <aside className="ai-sidebar ai-glass-panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 800 }}>📚 AI Scan History</h3>
-          <button 
-            onClick={handleStartNewChat}
-            className="btn btn-secondary" 
-            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-            title="Start New Conversation"
-          >
-            <Plus size={14} /> New Chat
+    <div style={style.wrapper}>
+      <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+
+      {/* ── SIDEBAR ── */}
+      <aside style={style.sidebar}>
+        <div style={style.sidebarHeader}>
+          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary, #fff)' }}>Conversations</span>
+          <button onClick={createNewChat} style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Plus size={12} /> New
           </button>
         </div>
-        
-        <div className="ai-history-search">
-          <Search size={14} className="text-muted" />
-          <input 
-            type="text" 
-            placeholder="Search diagnostics..." 
+        <div style={style.searchBox}>
+          <Search size={14} color="var(--text-muted, #64748b)" />
+          <input
+            type="text"
+            placeholder="Search..."
             value={searchHistoryQuery}
-            onChange={(e) => setSearchHistoryQuery(e.target.value)}
+            onChange={e => setSearchHistoryQuery(e.target.value)}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary, #fff)', fontSize: '0.8rem' }}
           />
         </div>
-        
-        <div className="ai-history-list">
-          {['Today', 'Yesterday', 'Previous Week'].map(group => {
-            const groupConvs = filteredHistory.filter(c => c.timestamp === group);
-            if (groupConvs.length === 0) return null;
-            
-            return (
-              <React.Fragment key={group}>
-                <div className="ai-history-group">{group}</div>
-                {groupConvs.map(c => (
-                  <div 
-                    key={c.id} 
-                    className={`ai-history-item ${activeConvId === c.id ? 'active' : ''}`}
-                    onClick={() => setActiveConvId(c.id)}
-                  >
-                    <div className="ai-history-item-content">
-                      <span>💬</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.title}</span>
-                    </div>
-                    <div className="ai-history-item-actions">
-                      <button 
-                        className="ai-history-action-btn" 
-                        onClick={(e) => handleRenameConversation(c.id, e)}
-                        title="Rename"
-                      >
-                        <Edit2 size={11} />
-                      </button>
-                      <button 
-                        className="ai-history-action-btn" 
-                        onClick={(e) => handleDeleteConversation(c.id, e)}
-                        title="Delete"
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </React.Fragment>
-            );
-          })}
-        </div>
-        
-        <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--secondary)' }}></div>
-            <span>Diagnostics Telemetry Synced</span>
-          </div>
-        </div>
-      </aside>
-
-      {/* MAIN VIEW CONTROLLER */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        
-        {/* SUB NAVIGATION BAR */}
-        <div className="ai-glass-panel" style={{ padding: '0.75rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span style={{ fontSize: '1.4rem' }}>🤖</span>
-            <div>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 900, margin: 0, textAlign: 'left' }}>RoadRescue AI Assistant</h2>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Core Model 3.5 Active • GPS Engaged</p>
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button 
-              onClick={() => setActiveTab('chat')}
-              className={`btn ${activeTab === 'chat' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
-            >
-              💬 Chat & Voice
-            </button>
-            <button 
-              onClick={() => setActiveTab('vision')}
-              className={`btn ${activeTab === 'vision' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
-            >
-              📸 Image Diagnosis
-            </button>
-            <button 
-              onClick={() => setActiveTab('telemetry')}
-              className={`btn ${activeTab === 'telemetry' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
-            >
-              📈 Telemetry Health
-            </button>
-            <button 
-              onClick={() => setActiveTab('safety')}
-              className={`btn ${activeTab === 'safety' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
-            >
-              🚨 SOS Guide
-            </button>
-          </div>
-        </div>
-
-        {/* 2. CHAT & VOICE HUB */}
-        {activeTab === 'chat' && (
-          <div className="ai-module-grid">
-            
-            {/* LEFT CHAT AREA */}
-            <div className="ai-glass-panel" style={{ display: 'flex', flexDirection: 'column', height: '520px', position: 'relative' }}>
-              
-              {currentConv.messages.length <= 1 ? (
-                /* HERO SCREEN WHEN NEW CHAT */
-                <div className="ai-orb-hero animate-slide-up">
-                  <div className="ai-orb-container">
-                    <canvas ref={canvasRef} className="ai-orb-canvas" />
-                    <div className="ai-orb-visual"></div>
-                    <div className="ai-orb-halo-1"></div>
-                    <div className="ai-orb-halo-2"></div>
-                  </div>
-                  
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 900, marginBottom: '0.5rem' }}>Meet RoadRescue AI Assistant</h2>
-                  <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: '460px', marginBottom: '1.5rem' }}>
-                    Your intelligent roadside companion. Diagnose vehicle problems, estimate repair costs, and locate nearby mechanics in seconds.
-                  </p>
-                  
-                  <div style={{ width: '100%' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left' }}>
-                      💡 Quick Presets:
-                    </div>
-                    <div className="ai-suggested-grid">
-                      <button onClick={() => handleSendMessage("🔋 My car won't start")} className="ai-suggested-btn">
-                        <span>🔋</span> My car won't start
-                      </button>
-                      <button onClick={() => handleSendMessage("🔧 I have a flat tire")} className="ai-suggested-btn">
-                        <span>🔧</span> Flat tire help
-                      </button>
-                      <button onClick={() => handleSendMessage("💨 Engine is overheating / smoking")} className="ai-suggested-btn">
-                        <span>💨</span> Engine overheating
-                      </button>
-                      <button onClick={() => handleSendMessage("🛢️ Oil level warning light is on")} className="ai-suggested-btn">
-                        <span>🛢️</span> Strange oil leakage
-                      </button>
-                    </div>
-                  </div>
-                </div>
+        <div style={style.convList}>
+          {filteredHistory.map(c => (
+            <div key={c.id} style={style.convItem(activeConvId === c.id)} onClick={() => setActiveConvId(c.id)}>
+              {renamingConvId === c.id ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onBlur={confirmRename}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') setRenamingConvId(null); }}
+                  onClick={e => e.stopPropagation()}
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '4px', padding: '2px 6px', color: 'var(--text-primary, #fff)', fontSize: '0.8rem', outline: 'none' }}
+                />
               ) : (
-                /* ACTIVE CHAT FEED */
                 <>
-                  <div className="chatbot-body" style={{ flexGrow: 1, paddingRight: '0.5rem' }}>
-                    {currentConv.messages.map((msg) => (
-                      <div key={msg.id} className={`chat-message ${msg.sender}`} style={{ marginBottom: '1rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          
-                          {/* Message Content */}
-                          <div style={{ whiteSpace: 'pre-line' }}>{msg.text}</div>
-                          
-                          {/* If AI Diagnostic Card */}
-                          {msg.isDiagnostic && msg.diagnosisData && (
-                            <div style={{ 
-                              marginTop: '0.75rem', 
-                              background: 'var(--light-surface)', 
-                              padding: '0.75rem', 
-                              borderRadius: 'var(--radius-sm)',
-                              border: '1px solid var(--border-light)',
-                              borderLeft: '4px solid var(--primary)',
-                              fontSize: '0.82rem'
-                            }}>
-                              <div style={{ fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
-                                <Sparkles size={14} /> AI Diagnostic Summary
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '0.35rem', color: 'var(--text-secondary)' }}>
-                                <strong>Issue:</strong> <span>{msg.diagnosisData.issue}</span>
-                                <strong>Confidence:</strong> <span>{msg.diagnosisData.confidence}% match</span>
-                                <strong>Est. Cost:</strong> <span style={{ color: 'var(--secondary)', fontWeight: 700 }}>{msg.diagnosisData.cost}</span>
-                                <strong>Est. Time:</strong> <span>{msg.diagnosisData.time}</span>
-                              </div>
-                              
-                              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-light)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                <strong>⚠️ Safety Note:</strong> {msg.diagnosisData.advice}
-                              </div>
-                              
-                              <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-                                <button 
-                                  onClick={() => speakText(msg.text)}
-                                  className="btn btn-secondary" 
-                                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', gap: '0.25rem' }}
-                                >
-                                  <Volume2 size={12} /> Play Voice
-                                </button>
-                                <button 
-                                  onClick={() => setActiveTab('safety')}
-                                  className="btn btn-emergency" 
-                                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
-                                >
-                                  🚨 View SOS Steps
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Timestamp & Status */}
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start', marginTop: '0.25rem' }}>
-                            {msg.time} {msg.sender === 'user' && (msg.status === 'read' ? '✓✓' : '✓')}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {isAiTyping && (
-                      <div className="chatbot-typing" style={{ display: 'inline-flex', padding: '0.6rem 1rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: '0.5rem' }}>Core analyzing</span>
-                        <div className="typing-dot"></div>
-                        <div className="typing-dot"></div>
-                        <div className="typing-dot"></div>
-                      </div>
-                    )}
-                    <div ref={chatEndRef} />
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, fontSize: '0.82rem', flex: 1, color: 'var(--text-primary, #fff)' }}>
+                    <MessageSquare size={12} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
+                    {c.title}
+                  </div>
+                  <div style={{ display: 'flex', gap: '2px', opacity: activeConvId === c.id ? 1 : 0, transition: 'opacity 0.15s' }}>
+                    <button onClick={e => startRename(c.id, c.title, e)} style={{ width: '22px', height: '22px', borderRadius: '4px', border: 'none', background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted, #64748b)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Rename">
+                      <Edit2 size={10} />
+                    </button>
+                    <button onClick={e => deleteConversation(c.id, e)} style={{ width: '22px', height: '22px', borderRadius: '4px', border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete">
+                      <Trash2 size={10} />
+                    </button>
                   </div>
                 </>
               )}
-
-              {/* Chat Input Bar */}
-              <div className="chatbot-footer" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', marginTop: 'auto' }}>
-                <input 
-                  type="text" 
-                  placeholder="Ask a question or describe your emergency..." 
-                  className="chatbot-input" 
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(chatInput)}
-                  disabled={isAiTyping}
-                />
-                
-                <div style={{ display: 'flex', gap: '0.35rem' }}>
-                  <button 
-                    onClick={toggleVoiceAssistant}
-                    className={`chatbot-action-btn ${isVoiceListening ? 'active' : ''}`}
-                    style={{ position: 'relative', overflow: 'visible', color: isVoiceListening ? 'var(--secondary)' : 'var(--text-secondary)' }}
-                    title="Talk to AI (Voice to Text)"
-                  >
-                    <Mic size={16} />
-                    {isVoiceListening && (
-                      <span className="map-pulse-circle" style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, background: 'var(--secondary)' }}></span>
-                    )}
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('vision')}
-                    className="chatbot-action-btn"
-                    title="AI Image diagnosis upload"
-                  >
-                    <Camera size={16} />
-                  </button>
-                  <button 
-                    onClick={() => handleSendMessage(chatInput)} 
-                    className="chatbot-action-btn send"
-                    disabled={isAiTyping || !chatInput.trim()}
-                  >
-                    <Send size={16} />
-                  </button>
-                </div>
-              </div>
             </div>
+          ))}
+        </div>
+        <div style={{ padding: '0.75rem', borderTop: '1px solid var(--border-light, rgba(255,255,255,0.08))', fontSize: '0.7rem', color: 'var(--text-muted, #64748b)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
+          AI Engine Online
+        </div>
+      </aside>
 
-            {/* RIGHT SIDE MODULES IN CHAT TAB: SMART SUGGESTIONS */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              
-              {/* VOICE MODAL POPUP OR WIDGET */}
-              {isVoiceListening && (
-                <div className="ai-glass-panel" style={{ background: 'var(--primary-glow)', borderColor: 'var(--primary)', textAlign: 'center', padding: '1.5rem 1rem' }}>
-                  <div style={{ display: 'flex', justifySelf: 'center', marginBottom: '1rem' }}>
-                    <div className="voice-pulse-btn">
-                      <Mic size={32} />
-                    </div>
-                  </div>
-                  <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary)', marginBottom: '0.25rem' }}>Listening Live...</h4>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic', minHeight: '32px' }}>
-                    {voiceTranscript || "Start speaking, describing your car symptoms..."}
-                  </p>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    <select 
-                      value={selectedLanguage}
-                      onChange={(e: any) => setSelectedLanguage(e.target.value)}
-                      className="auth-input-field"
-                      style={{ fontSize: '0.75rem', height: '28px', padding: '0 0.5rem', width: 'auto', background: 'var(--light-bg)' }}
-                    >
-                      <option value="en">English (US)</option>
-                      <option value="es">Español (ES)</option>
-                      <option value="hi">हिंदी (HI)</option>
-                    </select>
-                    
-                    <button 
-                      onClick={() => setIsVoiceListening(false)}
-                      className="btn btn-secondary" 
-                      style={{ padding: '0.2,0.5rem', fontSize: '0.75rem' }}
-                    >
-                      Cancel
+      {/* ── MAIN AREA ── */}
+      <div style={style.main}>
+        {/* Tab Bar */}
+        <div style={style.tabBar}>
+          <button style={style.tabBtn(activeTab === 'chat')} onClick={() => setActiveTab('chat')}>
+            <MessageSquare size={14} /> Chat & Voice
+          </button>
+          <button style={style.tabBtn(activeTab === 'vision')} onClick={() => setActiveTab('vision')}>
+            <Camera size={14} /> Image Diagnosis
+          </button>
+          <button style={style.tabBtn(activeTab === 'telemetry')} onClick={() => setActiveTab('telemetry')}>
+            <RefreshCw size={14} /> Telemetry
+          </button>
+          <button style={style.tabBtn(activeTab === 'safety')} onClick={() => setActiveTab('safety')}>
+            <Info size={14} /> SOS Guide
+          </button>
+        </div>
+
+        {/* ── CHAT TAB ── */}
+        {activeTab === 'chat' && (
+          <div style={style.chatArea}>
+            {!currentConv || currentConv.messages.length <= 1 ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                <div style={{ position: 'relative', width: '160px', height: '160px', marginBottom: '1.5rem' }}>
+                  <canvas ref={canvasRef} width={160} height={160} style={{ borderRadius: '50%' }} />
+                </div>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-primary, #fff)', marginBottom: '0.4rem' }}>RoadRescue AI Assistant</h2>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #94a3b8)', maxWidth: '420px', textAlign: 'center', marginBottom: '1.5rem' }}>
+                  Diagnose vehicle problems, estimate repair costs, and connect with nearby mechanics instantly.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem', width: '100%', maxWidth: '500px' }}>
+                  {SUGGESTED_PROMPTS.map(p => (
+                    <button key={p.text} style={style.suggestedPrompt} onClick={() => sendMessage(p.text)} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.08)'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.3)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'var(--border-light, rgba(255,255,255,0.1))'; }}>
+                      <span>{p.icon}</span> {p.text}
                     </button>
-                  </div>
-                </div>
-              )}
-
-              {/* SMART SUGGESTION CARDS */}
-              <div className="ai-glass-panel">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                  <Sparkles size={16} color="var(--ai-purple)" />
-                  <h4 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0 }}>Smart AI Recommendations</h4>
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  
-                  <div className="db-timeline-item completed" style={{ paddingLeft: '1.5rem', fontSize: '0.8rem', position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 0, top: 2 }}>📍</span>
-                    <strong style={{ display: 'block', color: 'var(--text-primary)' }}>Nearest Tow Service</strong>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Express Tow Boston (1.4 mi) • 14 min arrival ETA</span>
-                  </div>
-                  
-                  <div className="db-timeline-item completed" style={{ paddingLeft: '1.5rem', fontSize: '0.8rem', position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 0, top: 2 }}>🔧</span>
-                    <strong style={{ display: 'block', color: 'var(--text-primary)' }}>Recommended Repair Shop</strong>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Eastside Auto Center (2.0 mi) • specializes in Hybrid/EV</span>
-                  </div>
-                  
-                  <div className="db-timeline-item completed" style={{ paddingLeft: '1.5rem', fontSize: '0.8rem', position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 0, top: 2 }}>📋</span>
-                    <strong style={{ display: 'block', color: 'var(--text-primary)' }}>Warranty Information</strong>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Engine diagnostic covered under RoadRescue Gold policy.</span>
-                  </div>
-
+                  ))}
                 </div>
               </div>
-
-              {/* NOTIFICATION FEED */}
-              <div className="ai-glass-panel">
-                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  🔔 Smart Alerts
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.75rem' }}>
-                  <div style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.05)', borderLeft: '3px solid var(--accent)', borderRadius: '4px' }}>
-                    <strong>Low battery voltage detected</strong>: Battery capacity at 22%. Diagnostic replacement advised.
-                  </div>
-                  <div style={{ padding: '0.5rem', background: 'rgba(230, 240, 255, 0.5)', borderLeft: '3px solid var(--primary)', borderRadius: '4px' }}>
-                    <strong>Weather Warning</strong>: High heat warnings. Engine coolant lines under stress.
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
-        {/* 3. VISION & SENSOR HUB */}
-        {activeTab === 'vision' && (
-          <div className="ai-module-grid">
-            
-            {/* IMAGE UPLOAD DIAGNOSIS */}
-            <div className="ai-glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                📸 AI Vision Engine Scanner
-              </h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Upload or drag a photo of your engine bay leak, tire wear, warning lights, or battery terminals.
-              </p>
-
-              {/* Drag and Drop Container */}
-              <div className={`ai-scan-container ${isScanning ? 'scanning' : ''}`} style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '2rem 1rem', textAlign: 'center', position: 'relative' }}>
-                
-                {isScanning && <div className="ai-scan-laser"></div>}
-                
-                {uploadedImage ? (
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
-                    <img 
-                      src={uploadedImage} 
-                      alt="Uploaded Scan" 
-                      style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', borderRadius: '8px' }}
-                    />
-                    <button 
-                      onClick={() => { setUploadedImage(null); setVisionDiagnosisResult(null); }}
-                      style={{ position: 'absolute', top: 5, right: 5, padding: '4px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', cursor: 'pointer' }}
-                    >
-                      <X size={16} />
-                    </button>
-                    
-                    <p style={{ fontSize: '0.75rem', fontWeight: 800, marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
-                      📄 {uploadedImageName}
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <Upload size={36} color="var(--text-muted)" style={{ marginBottom: '0.75rem', display: 'inline-block' }} />
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>Drag & Drop Image Here</div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', margin: '0.25rem 0' }}>Supports JPEG, PNG up to 8MB</span>
-                    
-                    <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <button onClick={() => handleImageUploadSimulation('tire')} className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.35rem 0.6rem' }}>🚗 Punctured Tire</button>
-                      <button onClick={() => handleImageUploadSimulation('oil')} className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.35rem 0.6rem' }}>🛢️ Oil Leak</button>
-                      <button onClick={() => handleImageUploadSimulation('battery')} className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.35rem 0.6rem' }}>🔋 Acid Battery</button>
-                      <button onClick={() => handleImageUploadSimulation('dash')} className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.35rem 0.6rem' }}>🚨 Dashboard Warning</button>
+            ) : (
+              <div style={style.chatMessages}>
+                {currentConv.messages.map(msg => (
+                  <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' as const, marginBottom: '1rem', alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={style.msgBubble(msg.sender)}>
+                      {parseMarkdown(msg.text)}
+                      {msg.imageSrc && (
+                        <div style={{ marginTop: '0.5rem' }}>
+                          <img src={msg.imageSrc} alt="uploaded" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', objectFit: 'contain' }} />
+                          {msg.imageFileName && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>{msg.imageFileName}</div>}
+                        </div>
+                      )}
+                      {msg.recommendedService && (
+                        <div style={{ marginTop: '0.75rem', padding: '0.65rem', background: 'rgba(34,197,94,0.08)', borderRadius: '8px', border: '1px solid rgba(34,197,94,0.2)' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#22c55e', marginBottom: '0.4rem' }}>
+                            {SERVICES_MAP[msg.recommendedService.name]?.icon || '🔧'} {msg.recommendedService.name}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.5rem' }}>
+                            <span>ETA: {msg.recommendedService.eta}</span>
+                            <span style={{ fontWeight: 800, color: '#22c55e', fontSize: '1rem' }}>₹{msg.recommendedService.price.toLocaleString('en-IN')}</span>
+                          </div>
+                          <button onClick={() => openBooking(msg.recommendedService!.name, msg.recommendedService!.price)} style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                            Book Now →
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Diagnosis Output Result Panel */}
-              {isScanning && (
-                <div style={{ padding: '1rem', textAlign: 'center', background: 'rgba(37,99,235,0.04)', borderRadius: '8px' }}>
-                  <RefreshCw size={24} className="spinning" style={{ display: 'inline-block', marginBottom: '0.5rem' }} />
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>Analyzing visual pixels...</div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Executing diagnostic matrix & confidence calculations...</span>
-                </div>
-              )}
-
-              {visionDiagnosisResult && !isScanning && (
-                <div className="animate-slide-up" style={{ padding: '1rem', background: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.15)', borderRadius: '8px', borderLeft: '4px solid var(--secondary)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <div style={{ fontWeight: 800, color: 'var(--secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <CheckCircle size={16} /> Image Diagnosis Successful
-                    </div>
-                    <span style={{ fontSize: '0.8rem', background: 'var(--secondary-glow)', color: '#16a34a', padding: '2px 8px', borderRadius: '99px', fontWeight: 800 }}>
-                      {visionDiagnosisResult.confidence}% Confidence
-                    </span>
-                  </div>
-                  
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
-                    <div><strong>Detected Issue:</strong> {visionDiagnosisResult.issue}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.25rem' }}>
-                      <div style={{ padding: '0.5rem', background: 'var(--light-bg)', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Estimated Repair Cost</span>
-                        <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>{visionDiagnosisResult.cost}</strong>
-                      </div>
-                      <div style={{ padding: '0.5rem', background: 'var(--light-bg)', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Repair Duration</span>
-                        <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>{visionDiagnosisResult.time}</strong>
-                      </div>
-                    </div>
-                    
-                    <div style={{ padding: '0.5rem', background: 'rgba(239, 68, 68, 0.05)', color: 'var(--text-primary)', borderLeft: '3px solid var(--accent)', borderRadius: '4px', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                      <strong>⚠️ Safety Advice:</strong> {visionDiagnosisResult.advice}
-                    </div>
-                    
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <button 
-                        onClick={() => {
-                          const userText = `📸 Vision Diagnosis: ${visionDiagnosisResult.issue}`;
-                          handleSendMessage(userText);
-                          setActiveTab('chat');
-                        }}
-                        className="btn btn-primary"
-                        style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', flexGrow: 1 }}
-                      >
-                        Ask AI About This
-                      </button>
-                      <button 
-                        onClick={() => alert("Connecting live technician dispatch...")}
-                        className="btn btn-secondary"
-                        style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}
-                      >
-                        Dispatch Mechanic
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* INTERACTIVE WARNING LIGHT SCANNER GRID */}
-            <div className="ai-glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  ⚙️ Warning Light Scanner
-                </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Click an icon to diagnose</span>
-              </div>
-              
-              <div className="warning-lights-grid">
-                {Object.keys(warningLightsDetails).map((light) => (
-                  <div 
-                    key={light}
-                    onClick={() => handleWarningLightClick(light)}
-                    className={`warning-light-card ${activeWarningLight === light ? 'active' : ''}`}
-                  >
-                    <span className="warning-light-icon">
-                      {light === 'Check Engine' && '🔧'}
-                      {light === 'Battery' && '🔋'}
-                      {light === 'Oil Pressure' && '🛢️'}
-                      {light === 'ABS' && '🛑'}
-                      {light === 'Airbag' && '🎈'}
-                      {light === 'Tire Pressure' && '💨'}
-                      {light === 'Brake Warning' && '⛔'}
-                      {light === 'Coolant Temp' && '🌡️'}
-                    </span>
-                    <span className="warning-light-label">{light}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Warning Light Detailed explanation */}
-              {activeWarningLight ? (
-                <div className="animate-slide-up" style={{ 
-                  padding: '1rem', 
-                  background: 'var(--light-surface)', 
-                  border: '1px solid var(--border-light)', 
-                  borderRadius: '12px' 
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <h4 style={{ fontWeight: 800, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      {warningLightsDetails[activeWarningLight].emoji} {activeWarningLight}
-                    </h4>
-                    
-                    <span style={{ 
-                      fontSize: '0.7rem', 
-                      fontWeight: 800, 
-                      padding: '2px 8px', 
-                      borderRadius: '4px',
-                      textTransform: 'uppercase',
-                      background: warningLightsDetails[activeWarningLight].severity === 'Emergency' ? 'rgba(239, 68, 68, 0.15)' : warningLightsDetails[activeWarningLight].severity === 'High' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                      color: warningLightsDetails[activeWarningLight].severity === 'Emergency' ? '#dc2626' : warningLightsDetails[activeWarningLight].severity === 'High' ? '#d97706' : '#2563eb'
-                    }}>
-                      {warningLightsDetails[activeWarningLight].severity} Severity
-                    </span>
-                  </div>
-                  
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    <div><strong>Meaning:</strong> {warningLightsDetails[activeWarningLight].meaning}</div>
-                    <div>
-                      <strong>Can you drive?</strong> <br />
-                      <span style={{ color: warningLightsDetails[activeWarningLight].severity === 'Emergency' ? '#dc2626' : 'var(--text-primary)', fontWeight: 700 }}>
-                        {warningLightsDetails[activeWarningLight].drivable}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem', padding: '0 0.25rem' }}>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted, #64748b)' }}>
+                        {msg.time} {msg.sender === 'user' && (msg.status === 'read' ? '✓✓' : '✓')}
                       </span>
-                    </div>
-                    
-                    <div style={{ padding: '0.5rem', background: 'var(--light-bg)', borderRadius: '6px', borderLeft: '3px solid var(--primary)', fontSize: '0.78rem' }}>
-                      <strong>🔧 Recommended Action:</strong> {warningLightsDetails[activeWarningLight].action}
-                    </div>
-                    
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <button 
-                        onClick={() => {
-                          handleSendMessage(`🚨 Tell me more about my ${activeWarningLight} warning light.`);
-                          setActiveTab('chat');
-                        }}
-                        className="btn btn-primary"
-                        style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', flexGrow: 1 }}
-                      >
-                        Ask AI Diagnostic
-                      </button>
-                      
-                      {warningLightsDetails[activeWarningLight].severity === 'Emergency' && (
-                        <button 
-                          onClick={() => {
-                            alert("Calling dispatch centers immediately...");
-                          }}
-                          className="btn btn-emergency"
-                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
-                        >
-                          Request SOS Tow
-                        </button>
+                      {msg.sender === 'ai' && (
+                        <>
+                          <button onClick={() => speakText(msg.text)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: speechSynthesisActive ? '#3b82f6' : 'var(--text-muted, #64748b)', padding: '2px', display: 'flex' }} title="Read aloud">
+                            <Volume2 size={12} />
+                          </button>
+                          <button onClick={() => copyMessage(msg.text, msg.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: copiedMessageId === msg.id ? '#22c55e' : 'var(--text-muted, #64748b)', padding: '2px', display: 'flex' }} title="Copy">
+                            {copiedMessageId === msg.id ? <CheckCircle size={12} /> : <Copy size={12} />}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
+                ))}
+                {streamingText && (
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, marginBottom: '1rem', alignItems: 'flex-start' }}>
+                    <div style={{ ...style.msgBubble('ai'), border: '1px solid rgba(59,130,246,0.2)' }}>
+                      {parseMarkdown(streamingText)}
+                      <span style={{ display: 'inline-block', width: '2px', height: '1em', background: '#3b82f6', marginLeft: '2px', animation: 'blink 0.8s infinite', verticalAlign: 'text-bottom' }} />
+                    </div>
+                  </div>
+                )}
+                {isAiTyping && !streamingText && (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.04)', borderRadius: '12px', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted, #64748b)' }}>AI is thinking</span>
+                    {[0, 1, 2].map(i => (
+                      <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: '#3b82f6', animation: `bounce 1.4s ${i * 0.16}s infinite ease-in-out both` }} />
+                    ))}
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+            )}
+            {/* Input Bar */}
+            <div style={style.inputBar}>
+              {isAiTyping && (
+                <button onClick={stopGeneration} title="Stop generating" style={{ ...style.actionBtn(false), background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
+                  <Square size={14} />
+                </button>
+              )}
+              <button onClick={() => fileInputRef.current?.click()} title="Upload image" style={style.actionBtn()}>
+                <Paperclip size={16} />
+              </button>
+              <button onClick={toggleVoiceAssistant} title="Voice input" style={style.actionBtn(isVoiceListening)}>
+                <Mic size={16} />
+              </button>
+              <input
+                type="text"
+                placeholder={isVoiceListening ? 'Listening...' : 'Describe your vehicle issue...'}
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(chatInput); } }}
+                disabled={isAiTyping}
+                style={style.textInput}
+              />
+              {!isAiTyping && currentConv && currentConv.messages.length > 2 && (
+                <button onClick={regenerateLastResponse} title="Regenerate last response" style={style.actionBtn()}>
+                  <RefreshCw size={16} />
+                </button>
+              )}
+              <button onClick={() => sendMessage(chatInput)} disabled={!chatInput.trim() || isAiTyping} style={{ ...style.sendBtn, opacity: (!chatInput.trim() || isAiTyping) ? 0.4 : 1, cursor: (!chatInput.trim() || isAiTyping) ? 'not-allowed' : 'pointer' }}>
+                <Send size={16} />
+              </button>
+            </div>
+            {isVoiceListening && (
+              <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--border-light, rgba(255,255,255,0.08))', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(34,197,94,0.04)' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pulse 1.5s infinite' }}>
+                  <Mic size={18} color="#22c55e" />
                 </div>
-              ) : (
-                <div style={{ padding: '1rem', border: '1px dashed var(--border-light)', borderRadius: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                  <Info size={18} style={{ display: 'inline-block', marginBottom: '0.25rem' }} />
-                  <div>Select any warning symbol above to display details, severity, drivability check, and required troubleshooting actions.</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#22c55e' }}>Listening...</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', fontStyle: 'italic' }}>{voiceTranscript || 'Speak your issue now...'}</div>
+                </div>
+                <select value={selectedLanguage} onChange={e => setSelectedLanguage(e.target.value as any)} style={{ padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid var(--border-light, rgba(255,255,255,0.1))', background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary, #fff)', fontSize: '0.75rem' }}>
+                  <option value="en">English</option>
+                  <option value="hi">हिंदी</option>
+                </select>
+                <button onClick={stopVoice} style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none', background: 'rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>Stop</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── VISION TAB ── */}
+        {activeTab === 'vision' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', flex: 1, overflow: 'auto' }}>
+            <div style={style.card}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Camera size={18} /> AI Vision Scanner
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1rem' }}>
+                Upload a photo of your vehicle issue for instant AI-powered diagnosis.
+              </p>
+              <div style={{ border: '2px dashed var(--border-light, rgba(255,255,255,0.12))', borderRadius: '12px', padding: '2rem', textAlign: 'center', position: 'relative', overflow: 'hidden', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
+                {isScanning && (
+                  <div style={{ position: 'absolute', top: 0, left: '-100%', width: '100%', height: '3px', background: 'linear-gradient(90deg, transparent, #3b82f6, transparent)', animation: 'scanLine 1.5s infinite' }} />
+                )}
+                {uploadedImage ? (
+                  <div>
+                    <img src={uploadedImage} alt="uploaded" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', objectFit: 'contain', marginBottom: '0.75rem' }} />
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)' }}>{uploadedFileName}</div>
+                    <button onClick={e => { e.stopPropagation(); setUploadedImage(null); setVisionResult(null); }} style={{ marginTop: '0.5rem', padding: '0.3rem 0.7rem', borderRadius: '6px', border: 'none', background: 'rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem' }}>Remove</button>
+                  </div>
+                ) : (
+                  <div>
+                    <Upload size={36} color="var(--text-muted, #64748b)" style={{ marginBottom: '0.75rem' }} />
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary, #fff)' }}>Click or Drop Image Here</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>JPEG, PNG up to 8MB</div>
+                  </div>
+                )}
+              </div>
+              {isScanning && (
+                <div style={{ padding: '1rem', textAlign: 'center', marginTop: '0.75rem', background: 'rgba(59,130,246,0.04)', borderRadius: '8px' }}>
+                  <RefreshCw size={20} style={{ display: 'inline-block', animation: 'spin 1s linear infinite', marginBottom: '0.4rem' }} />
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary, #fff)' }}>Analyzing image with Vision AI...</div>
+                </div>
+              )}
+              {visionResult && !isScanning && (
+                <div style={{ marginTop: '0.75rem', padding: '1rem', background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: '10px', borderLeft: '4px solid #22c55e' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontWeight: 800, color: '#22c55e', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}><CheckCircle size={14} /> Diagnosis Complete</span>
+                    {visionResult.confidence > 0 && <span style={style.badge('#22c55e')}>{visionResult.confidence}%</span>}
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}><strong>Issue:</strong> {visionResult.issue}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div style={{ padding: '0.4rem', background: 'var(--card-bg, rgba(255,255,255,0.04))', borderRadius: '6px', border: '1px solid var(--border-light, rgba(255,255,255,0.08))' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748b)' }}>Est. Cost</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#22c55e' }}>{visionResult.cost}</div>
+                    </div>
+                    <div style={{ padding: '0.4rem', background: 'var(--card-bg, rgba(255,255,255,0.04))', borderRadius: '6px', border: '1px solid var(--border-light, rgba(255,255,255,0.08))' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748b)' }}>ETA</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary, #fff)' }}>{visionResult.time}</div>
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.5rem', background: 'rgba(239,68,68,0.04)', borderLeft: '3px solid #ef4444', borderRadius: '4px', fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.75rem' }}>
+                    <strong>⚠️ Advice:</strong> {visionResult.advice}
+                  </div>
+                  <button onClick={sendVisionDiagnosis} style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                    Discuss in Chat →
+                  </button>
                 </div>
               )}
             </div>
 
+            <div style={style.card}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                ⚙️ Warning Light Scanner
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginBottom: '1rem' }}>
+                {warningLights.map(w => (
+                  <div key={w.name} onClick={() => setActiveWarningLight(activeWarningLight === w.name ? null : w.name)} style={{ padding: '0.6rem', borderRadius: '10px', border: activeWarningLight === w.name ? `2px solid ${severityColor(w.severity)}` : '1px solid var(--border-light, rgba(255,255,255,0.08))', background: activeWarningLight === w.name ? `${severityColor(w.severity)}11` : 'rgba(255,255,255,0.02)', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}>
+                    <div style={{ fontSize: '1.3rem', marginBottom: '0.2rem' }}>{w.icon}</div>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)' }}>{w.name}</div>
+                  </div>
+                ))}
+              </div>
+              {activeWarningLight ? (() => {
+                const w = warningLights.find(l => l.name === activeWarningLight)!;
+                return (
+                  <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-light, rgba(255,255,255,0.08))', borderRadius: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <h4 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary, #fff)' }}>{w.icon} {w.name}</h4>
+                      <span style={style.badge(severityColor(w.severity))}>{w.severity}</span>
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.5rem' }}>{w.meaning}</p>
+                    <p style={{ fontSize: '0.8rem', color: severityColor(w.severity), fontWeight: 700, marginBottom: '0.5rem' }}>Can you drive? {w.drivable}</p>
+                    <div style={{ padding: '0.5rem', background: 'rgba(59,130,246,0.04)', borderLeft: '3px solid #3b82f6', borderRadius: '4px', fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)' }}>
+                      <strong>Action:</strong> {w.action}
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div style={{ padding: '1.5rem', border: '1px dashed var(--border-light, rgba(255,255,255,0.08))', borderRadius: '10px', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.8rem' }}>
+                  Click any warning light icon to view details
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* 4. TELEMETRY & REPAIR ESTIMATOR */}
+        {/* ── TELEMETRY TAB ── */}
         {activeTab === 'telemetry' && (
-          <div className="ai-module-grid">
-            
-            {/* VEHICLE HEALTH REPORT DASHBOARD */}
-            <div className="ai-glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  📈 Vehicle Telemetry Health
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', flex: 1, overflow: 'auto' }}>
+            <div style={style.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary, #fff)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <RefreshCw size={18} /> Vehicle Health
                 </h3>
-                <button 
-                  onClick={triggerHealthScan}
-                  disabled={isHealthScanning}
-                  className="btn btn-secondary" 
-                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                >
-                  <RefreshCw size={12} className={isHealthScanning ? 'spinning' : ''} /> {isHealthScanning ? "Scanning..." : "Run Active Scan"}
+                <button onClick={triggerHealthScan} disabled={isHealthScanning} style={{ padding: '0.35rem 0.7rem', borderRadius: '6px', border: 'none', background: 'rgba(59,130,246,0.12)', color: '#3b82f6', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <RefreshCw size={12} className={isHealthScanning ? 'spinning' : ''} /> {isHealthScanning ? 'Scanning...' : 'Run Scan'}
                 </button>
               </div>
-              
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Real-time OBD sensor telemetry readings. Circular metrics represent structural performance levels.
-              </p>
-
-              <div className="telemetry-grid" style={{ marginTop: '0.5rem' }}>
-                {Object.entries(healthMetrics).map(([metric, value]) => {
-                  const radius = 24;
-                  const strokeWidth = 5;
-                  const circumference = 2 * Math.PI * radius;
-                  const offset = circumference - (value / 100) * circumference;
-                  
-                  // Color thresholds
-                  let color = 'var(--primary)';
-                  if (value < 75) color = 'var(--accent)';
-                  else if (value < 85) color = '#f59e0b';
-                  else color = 'var(--secondary)';
-                  
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                {Object.entries(healthMetrics).map(([key, val]) => {
+                  const r = 28, sw = 5, c = 2 * Math.PI * r, off = c - (val / 100) * c;
+                  const col = val < 75 ? '#ef4444' : val < 85 ? '#f59e0b' : '#22c55e';
                   return (
-                    <div key={metric} className="telemetry-card">
-                      <div style={{ position: 'relative', width: '60px', height: '60px' }}>
-                        <svg className="circle-progress-svg" width="60" height="60" viewBox="0 0 60 60">
-                          <circle 
-                            className="circle-progress-bg" 
-                            cx="30" 
-                            cy="30" 
-                            r={radius} 
-                            strokeWidth={strokeWidth} 
-                          />
-                          <circle 
-                            className="circle-progress-bar" 
-                            cx="30" 
-                            cy="30" 
-                            r={radius} 
-                            strokeWidth={strokeWidth}
-                            stroke={color}
-                            strokeDasharray={circumference}
-                            strokeDashoffset={offset}
-                          />
+                    <div key={key} style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '0.4rem' }}>
+                      <div style={{ position: 'relative', width: '64px', height: '64px' }}>
+                        <svg width="64" height="64" viewBox="0 0 64 64">
+                          <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={sw} />
+                          <circle cx="32" cy="32" r={r} fill="none" stroke={col} strokeWidth={sw} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transform: 'rotate(-90deg)', transformOrigin: 'center', transition: 'stroke-dashoffset 0.8s ease' }} />
                         </svg>
-                        
-                        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800 }}>
-                          {value}%
-                        </div>
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary, #fff)' }}>{val}%</div>
                       </div>
-                      
-                      <span style={{ fontSize: '0.75rem', fontWeight: 700, marginTop: '0.5rem', textTransform: 'capitalize', color: 'var(--text-primary)' }}>
-                        {metric}
-                      </span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize' as const, color: 'var(--text-secondary, #94a3b8)' }}>{key}</span>
                     </div>
                   );
                 })}
               </div>
-
-              {/* Maintenance Tip Suggestions based on values */}
-              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.5rem' }}>💡 Personalized Care Advice</h4>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  {healthMetrics.oil < 80 && (
-                    <div style={{ padding: '0.4rem 0.6rem', background: 'rgba(245, 158, 11, 0.05)', borderLeft: '3px solid #f59e0b', borderRadius: '4px' }}>
-                      <strong>Oil levels running low ({healthMetrics.oil}%)</strong>: Consider topping off with synthetic oil to protect camshaft seals.
-                    </div>
-                  )}
-                  {healthMetrics.battery < 80 && (
-                    <div style={{ padding: '0.4rem 0.6rem', background: 'rgba(239, 68, 68, 0.05)', borderLeft: '3px solid var(--accent)', borderRadius: '4px' }}>
-                      <strong>Battery Capacity Declining ({healthMetrics.battery}%)</strong>: Cold starting performance is degraded. Recommend battery test.
-                    </div>
-                  )}
-                  <div style={{ padding: '0.4rem 0.6rem', background: 'rgba(34, 197, 94, 0.05)', borderLeft: '3px solid var(--secondary)', borderRadius: '4px' }}>
-                    <strong>Engine Status Strong ({healthMetrics.engine}%)</strong>: Cylinder compression and spark timings are executing within nominal limits.
-                  </div>
-                </div>
+              <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light, rgba(255,255,255,0.08))' }}>
+                <h4 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}>Care Tips</h4>
+                {healthMetrics.oil < 80 && <div style={{ padding: '0.4rem 0.6rem', background: 'rgba(245,158,11,0.05)', borderLeft: '3px solid #f59e0b', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.35rem' }}>Oil at {healthMetrics.oil}% — consider topping off with synthetic oil.</div>}
+                {healthMetrics.battery < 80 && <div style={{ padding: '0.4rem 0.6rem', background: 'rgba(239,68,68,0.05)', borderLeft: '3px solid #ef4444', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.35rem' }}>Battery at {healthMetrics.battery}% — cold starting may be affected. Recommend test.</div>}
+                <div style={{ padding: '0.4rem 0.6rem', background: 'rgba(34,197,94,0.05)', borderLeft: '3px solid #22c55e', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)' }}>Engine at {healthMetrics.engine}% — running within nominal limits.</div>
               </div>
             </div>
 
-            {/* REPAIR COST ESTIMATOR CALCULATOR */}
-            <div className="ai-glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                💵 Repair Cost Estimator
+            <div style={style.card}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                💵 Cost Estimator
               </h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Select vehicle details to calculate realistic market rates for parts, dispatches, and labor.
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', marginBottom: '1rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Brand</label>
-                  <select 
-                    value={estimatorBrand}
-                    onChange={(e) => setEstimatorBrand(e.target.value)}
-                    className="auth-input-field"
-                    style={{ height: '38px', fontSize: '0.85rem', padding: '0 0.5rem', background: 'var(--light-bg)' }}
-                  >
-                    <option>Tesla</option>
-                    <option>Toyota</option>
-                    <option>Ford</option>
-                    <option>Honda</option>
-                    <option>BMW</option>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted, #64748b)' }}>Brand</label>
+                  <select value={estimatorBrand} onChange={e => setEstimatorBrand(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-light, rgba(255,255,255,0.1))', background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary, #fff)', fontSize: '0.82rem', marginTop: '0.2rem' }}>
+                    {['Tata', 'Maruti Suzuki', 'Hyundai', 'Mahindra', 'Toyota', 'Honda', 'Kia', 'BMW', 'Mercedes'].map(b => <option key={b}>{b}</option>)}
                   </select>
                 </div>
-
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Model</label>
-                  <input 
-                    type="text"
-                    value={estimatorModel}
-                    onChange={(e) => setEstimatorModel(e.target.value)}
-                    className="auth-input-field"
-                    style={{ height: '38px', fontSize: '0.85rem', padding: '0 0.5rem', background: 'var(--light-bg)' }}
-                  />
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted, #64748b)' }}>Model</label>
+                  <input value={estimatorModel} onChange={e => setEstimatorModel(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-light, rgba(255,255,255,0.1))', background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary, #fff)', fontSize: '0.82rem', marginTop: '0.2rem', outline: 'none' }} />
                 </div>
-
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Symptoms / Problem</label>
-                  <select 
-                    value={estimatorProblem}
-                    onChange={(e) => setEstimatorProblem(e.target.value)}
-                    className="auth-input-field"
-                    style={{ height: '38px', fontSize: '0.85rem', padding: '0 0.5rem', background: 'var(--light-bg)' }}
-                  >
-                    <option>Battery Dead</option>
-                    <option>Flat Tire Puncture</option>
-                    <option>Engine Smoking</option>
-                    <option>Brake Squealing</option>
-                    <option>Fluid Leakage</option>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted, #64748b)' }}>Problem</label>
+                  <select value={estimatorProblem} onChange={e => setEstimatorProblem(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-light, rgba(255,255,255,0.1))', background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary, #fff)', fontSize: '0.82rem', marginTop: '0.2rem' }}>
+                    {['Battery Dead', 'Flat Tyre', 'Engine Smoking', 'Brake Squealing', 'Fluid Leakage'].map(p => <option key={p}>{p}</option>)}
                   </select>
                 </div>
-
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>City</label>
-                  <input 
-                    type="text"
-                    value={estimatorCity}
-                    onChange={(e) => setEstimatorCity(e.target.value)}
-                    className="auth-input-field"
-                    style={{ height: '38px', fontSize: '0.85rem', padding: '0 0.5rem', background: 'var(--light-bg)' }}
-                  />
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted, #64748b)' }}>City</label>
+                  <input value={estimatorCity} onChange={e => setEstimatorCity(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-light, rgba(255,255,255,0.1))', background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary, #fff)', fontSize: '0.82rem', marginTop: '0.2rem', outline: 'none' }} />
                 </div>
               </div>
-
-              {/* Estimate Details Output Cards */}
-              <div className="animate-slide-up" style={{ padding: '1rem', background: 'var(--light-surface)', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
-                <div style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Estimated Price Range</span>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--primary)', margin: '0.1rem 0' }}>
-                    {estimationData.range}
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: 800 }}>
-                    ⚡ Price Match Guarantee
-                  </span>
+              <div style={{ padding: '1rem', background: 'rgba(59,130,246,0.04)', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.12)' }}>
+                <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748b)' }}>Estimated Range</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#3b82f6' }}>{estimationData.range}</div>
+                  <div style={{ fontSize: '0.68rem', color: '#22c55e', fontWeight: 700 }}>Price Match Guarantee</div>
                 </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem', borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem' }}>
-                  <div>Parts Cost: <strong>${estimationData.parts}</strong></div>
-                  <div>Labor Rate: <strong>${estimationData.labor} / hr</strong></div>
-                  <div>Estimated Time: <strong>{estimationData.duration}</strong></div>
-                  <div>City Factor: <strong style={{ textTransform: 'capitalize' }}>{estimatorCity} Standard</strong></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', fontSize: '0.78rem', borderTop: '1px solid var(--border-light, rgba(255,255,255,0.08))', paddingTop: '0.5rem', color: 'var(--text-secondary, #94a3b8)' }}>
+                  <div>Parts: <strong>₹{estimationData.parts.toLocaleString('en-IN')}</strong></div>
+                  <div>Labor: <strong>₹{estimationData.labor.toLocaleString('en-IN')}</strong></div>
+                  <div>Duration: <strong>{estimationData.duration}</strong></div>
+                  <div>City: <strong style={{ textTransform: 'capitalize' as const }}>{estimatorCity}</strong></div>
                 </div>
-
-                <button 
-                  onClick={() => {
-                    handleSendMessage(`💵 I need to request a quote for my ${estimatorBrand} ${estimatorModel} experiencing ${estimatorProblem} in ${estimatorCity}.`);
-                    setActiveTab('chat');
-                  }}
-                  className="btn btn-primary"
-                  style={{ width: '100%', marginTop: '1rem', padding: '0.6rem' }}
-                >
-                  Send Quote to Chat
-                </button>
               </div>
+              <button onClick={() => sendMessage(`What is the cost of ${estimatorProblem} repair for my ${estimatorBrand} ${estimatorModel} in ${estimatorCity}?`)} style={{ width: '100%', marginTop: '0.75rem', padding: '0.6rem', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                Ask AI About This →
+              </button>
             </div>
-
           </div>
         )}
 
-        {/* 5. RECOMMENDATIONS & SOS GUIDES */}
+        {/* ── SAFETY TAB ── */}
         {activeTab === 'safety' && (
-          <div className="ai-module-grid">
-            
-            {/* EMERGENCY ACTION PLAN */}
-            <div className="ai-glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent)' }}>
-                🚨 SOS Emergency Manuals
-              </h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Select an active hazard category. Our AI has generated safe operational guidelines.
-              </p>
-
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', flex: 1, overflow: 'auto' }}>
+            <div style={style.card}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#ef4444', marginBottom: '0.5rem' }}>🚨 SOS Emergency Guide</h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1rem' }}>Select a scenario for AI-generated safety steps.</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                {['Accident', 'Vehicle Fire', 'Flash Flood', 'Brake Failure', 'Engine Smoke', 'Tire Burst'].map((scenario) => (
-                  <button 
-                    key={scenario}
-                    onClick={() => {
-                      let text = "";
-                      if (scenario === 'Accident') {
-                        text = "🚨 **Accident Steps**:\n1. Switch on hazard warning lights.\n2. Put vehicle in park and pull handbrake.\n3. Take passengers behind highway guard rail safety barriers.\n4. Call emergency numbers.\n\nDo's: Exchange insurer details.\nDon'ts: Argue on active traffic lanes.";
-                      } else if (scenario === 'Vehicle Fire') {
-                        text = "🔥 **Fire Emergency**:\n1. Turn off ignition key to stop fuel pumps.\n2. Evacuate passengers at least 150 feet away.\n3. Do not open hood (oxygen vents fires).\n4. Call 911 immediately.";
-                      } else {
-                        text = `⚠️ **${scenario} Steps**:\n1. Turn on warning lights.\n2. Pull vehicle safely to emergency breakdown zones.\n3. Keep calm and avoid sudden braking.`;
-                      }
-                      
-                      setConversations(prev => prev.map(c => {
-                        if (c.id === activeConvId) {
-                          return {
-                            ...c,
-                            messages: [
-                              ...c.messages,
-                              { id: Math.random().toString(), text: `🚨 Manual checked: ${scenario}`, sender: 'user', time: 'Just now' },
-                              { id: Math.random().toString(), text: text, sender: 'ai', time: 'Just now' }
-                            ]
-                          };
-                        }
-                        return c;
-                      }));
-                      setActiveTab('chat');
-                    }}
-                    className="ai-suggested-btn"
-                    style={{ borderColor: 'rgba(239, 68, 68, 0.25)', fontSize: '0.8rem' }}
-                  >
-                    <span>⚠️</span> {scenario} Guide
+                {[
+                  { name: 'Accident', emoji: '🚨', steps: '1. Switch on hazard lights.\n2. Pull over safely.\n3. Move behind guardrail.\n4. Call emergency services.\n5. Exchange insurer details.' },
+                  { name: 'Vehicle Fire', emoji: '🔥', steps: '1. Turn off ignition immediately.\n2. Evacuate all passengers 50m away.\n3. Do NOT open the hood.\n4. Call fire services (101).' },
+                  { name: 'Flash Flood', emoji: '🌊', steps: '1. Do not drive through water.\n2. Turn around and find higher ground.\n3. If trapped, climb to roof.\n4. Call disaster helpline (1070).' },
+                  { name: 'Brake Failure', emoji: '⛔', steps: '1. Pump brakes rapidly.\n2. Downshift to lower gears.\n3. Use handbrake gradually.\n4. Steer to soft shoulder.\n5. Call for towing.' },
+                  { name: 'Engine Smoke', emoji: '💨', steps: '1. Pull over immediately.\n2. Turn off engine.\n3. Do NOT open radiator cap.\n4. Wait 30 min before checking.\n5. Call mechanic.' },
+                  { name: 'Tyre Burst', emoji: '💥', steps: '1. Grip steering firmly.\n2. Do NOT slam brakes.\n3. Gradually reduce speed.\n4. Pull off road safely.\n5. Call for roadside assist.' },
+                ].map(s => (
+                  <button key={s.name} onClick={() => sendMessage(`Give me the full emergency safety steps for: ${s.name}`)} style={{ ...style.suggestedPrompt, borderColor: 'rgba(239,68,68,0.2)', fontSize: '0.78rem' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
+                    <span>{s.emoji}</span> {s.name}
                   </button>
                 ))}
               </div>
-
-              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--accent)' }}>📞 Direct Dispatch Hotlines</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <a href="tel:911" className="btn btn-emergency" style={{ width: '100%', padding: '0.6rem', fontSize: '0.85rem', justifyContent: 'center' }}>
-                    🚨 Call Emergency 911
+              <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light, rgba(255,255,255,0.08))' }}>
+                <h4 style={{ fontSize: '0.82rem', fontWeight: 800, color: '#ef4444', marginBottom: '0.5rem' }}>Emergency Hotlines</h4>
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.4rem' }}>
+                  <a href="tel:112" style={{ padding: '0.55rem', borderRadius: '8px', border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', textAlign: 'center' as const, textDecoration: 'none', display: 'block' }}>
+                    🚨 Call Emergency 112
                   </a>
-                  <a href="tel:+18005557672" className="btn btn-secondary" style={{ width: '100%', padding: '0.6rem', fontSize: '0.85rem', justifyContent: 'center' }}>
-                    📞 RoadRescue Dispatch Hotline (+1-800-555-SOS)
+                  <a href="tel:18001800112" style={{ padding: '0.55rem', borderRadius: '8px', border: 'none', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', textAlign: 'center' as const, textDecoration: 'none', display: 'block' }}>
+                    📞 RoadRescue Hotline (+91-1800-1800-112)
                   </a>
                 </div>
               </div>
             </div>
 
-            {/* RECOMMENDATIONS MAP & LIST */}
-            <div className="ai-glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                📍 Local Smart Recommendations
+            <div style={style.card}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                📋 Quick Services
               </h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                AI scans your localized coordinates and recommends suitable facilities.
-              </p>
-
-              {/* Map Placeholder Vector */}
-              <div style={{ height: '140px', background: 'var(--light-surface)', border: '1px solid var(--border-light)', borderRadius: '12px', overflow: 'hidden', position: 'relative' }}>
-                <svg viewBox="0 0 400 150" style={{ width: '100%', height: '100%' }}>
-                  {/* Grid Lines representing map streets */}
-                  <path d="M 0 40 L 400 40 M 0 100 L 400 100 M 120 0 L 120 150 M 280 0 L 280 150" stroke="var(--border-light)" strokeWidth="4" />
-                  
-                  {/* Driver Center Dot */}
-                  <circle cx="120" cy="100" r="10" fill="var(--primary)" opacity="0.2" className="map-pulse-circle" />
-                  <circle cx="120" cy="100" r="4" fill="var(--primary)" />
-                  <text x="132" y="104" fontSize="9" fontWeight="800" fill="var(--text-primary)">You</text>
-                  
-                  {/* Mechanic Pin */}
-                  <circle cx="280" cy="40" r="8" fill="var(--secondary)" opacity="0.3" />
-                  <circle cx="280" cy="40" r="4" fill="var(--secondary)" />
-                  <text x="290" y="44" fontSize="9" fontWeight="700" fill="var(--text-secondary)">Mechanic (0.8mi)</text>
-                  
-                  {/* Towing Pin */}
-                  <circle cx="80" cy="30" r="8" fill="var(--accent)" opacity="0.3" />
-                  <circle cx="80" cy="30" r="4" fill="var(--accent)" />
-                  <text x="90" y="34" fontSize="9" fontWeight="700" fill="var(--text-secondary)">Tow Truck (1.2mi)</text>
-                </svg>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1rem' }}>Indian pricing — book directly or ask AI.</p>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.65rem' }}>
+                {Object.entries(SERVICES_MAP).map(([name, s]) => (
+                  <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.7rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border-light, rgba(255,255,255,0.08))' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '1.3rem' }}>{s.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary, #fff)' }}>{name}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #64748b)' }}>ETA: {s.eta}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.95rem', color: '#22c55e' }}>₹{s.price.toLocaleString('en-IN')}</span>
+                      <button onClick={() => openBooking(name, s.price)} style={{ padding: '0.4rem 0.8rem', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}>Book</button>
+                    </div>
+                  </div>
+                ))}
               </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem', background: 'var(--light-surface)', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
-                  <div>
-                    <strong style={{ fontSize: '0.8rem', display: 'block' }}>Apex Hybrid & EV Repair</strong>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>0.8 miles away • Highly rated on Tesla Model Y issues</span>
-                  </div>
-                  <ChevronRight size={16} />
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem', background: 'var(--light-surface)', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
-                  <div>
-                    <strong style={{ fontSize: '0.8rem', display: 'block' }}>Towing Pros Logistics</strong>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>1.2 miles away • Has flatbed support ready</span>
-                  </div>
-                  <ChevronRight size={16} />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem', background: 'var(--light-surface)', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
-                  <div>
-                    <strong style={{ fontSize: '0.8rem', display: 'block' }}>Boston Metro EV Supercharger</strong>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>1.5 miles away • 8 open charge terminals</span>
-                  </div>
-                  <ChevronRight size={16} />
+              <div style={{ marginTop: '1rem' }}>
+                <h4 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}>💡 Pricing Notes</h4>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.6 }}>
+                  • All prices include GST and are indicative.<br />
+                  • Final price may vary based on vehicle type and location.<br />
+                  • Fuel delivery price is ₹700 + actual fuel cost.<br />
+                  • Night charges (10 PM - 6 AM) may apply +₹200.
                 </div>
               </div>
             </div>
-
           </div>
         )}
-
       </div>
+
+      <BookingModal
+        isOpen={showBookingModal}
+        onClose={() => setShowBookingModal(false)}
+        serviceName={bookingService.name}
+        price={bookingService.price}
+        onBookingConfirmed={(booking) => {
+          setShowBookingModal(false);
+          sendMessage(`✅ Booking confirmed for ${bookingService.name} at ₹${bookingService.price.toLocaleString('en-IN')}. Booking ID: ${booking.id}`);
+        }}
+      />
+
+      <style>{`
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+        @keyframes bounce { 0%,80%,100% { transform: scale(0); } 40% { transform: scale(1); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } }
+        @keyframes scanLine { 0% { left: -100%; } 100% { left: 200%; } }
+        .spinning { animation: spin 1s linear infinite; }
+      `}</style>
     </div>
   );
 }
