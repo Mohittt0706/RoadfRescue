@@ -9,6 +9,11 @@ import { EmergencyTypeRepository } from './emergencyTypeRepository.js';
 import { AuditRepository } from './auditRepository.js';
 import { ActiveJobRepository } from './activeJobRepository.js';
 import { ChatRepository } from './chatRepository.js';
+import { PricingRuleRepository } from './pricingRuleRepository.js';
+import { ZoneRepository } from './zoneRepository.js';
+import { EmergencyPricingRepository } from './emergencyPricingRepository.js';
+import { TaxConfigurationRepository } from './taxConfigurationRepository.js';
+import { PricingHistoryRepository } from './pricingHistoryRepository.js';
 
 /**
  * Repository instances - initialized with database reference.
@@ -29,6 +34,11 @@ export function initRepositories(db) {
     audit: new AuditRepository(db),
     activeJobs: new ActiveJobRepository(db),
     chat: new ChatRepository(db),
+    pricingRules: new PricingRuleRepository(db),
+    zones: new ZoneRepository(db),
+    emergencyPricing: new EmergencyPricingRepository(db),
+    taxConfig: new TaxConfigurationRepository(db),
+    pricingHistory: new PricingHistoryRepository(db),
   };
   return repositories;
 }
@@ -49,4 +59,9 @@ export {
   AuditRepository,
   ActiveJobRepository,
   ChatRepository,
+  PricingRuleRepository,
+  ZoneRepository,
+  EmergencyPricingRepository,
+  TaxConfigurationRepository,
+  PricingHistoryRepository,
 };

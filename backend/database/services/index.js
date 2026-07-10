@@ -1,5 +1,7 @@
 import { AuditHistoryService } from './auditHistoryService.js';
 import { ActiveJobService } from './activeJobService.js';
+import { PricingService } from './pricingService.js';
+import { TaxService } from './taxService.js';
 
 /**
  * Database Service Layer
@@ -17,6 +19,8 @@ export function initServices(db, repositories) {
   services = {
     auditHistory: new AuditHistoryService(db),
     activeJobs: new ActiveJobService(db, repositories),
+    pricing: new PricingService(db, repositories),
+    tax: new TaxService(db, repositories),
   };
   return services;
 }
@@ -28,4 +32,4 @@ export function getServices() {
   return services;
 }
 
-export { AuditHistoryService, ActiveJobService };
+export { AuditHistoryService, ActiveJobService, PricingService, TaxService };

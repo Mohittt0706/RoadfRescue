@@ -25,6 +25,13 @@ import exportRoutes from './routes/exportRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 
+// Pricing Module Route Imports
+import pricingRoutes from './routes/pricingRoutes.js';
+import enhancedServiceRoutes from './routes/serviceRoutes.js';
+import taxRoutes from './routes/taxRoutes.js';
+import zoneRoutes from './routes/zoneRoutes.js';
+import emergencyPricingRoutes from './routes/emergencyPricingRoutes.js';
+
 // Middleware Imports
 import { verifyAdmin } from './authentication/middleware.js';
 import { apiLimiter, authLimiter, paymentLimiter, emergencyLimiter, adminLimiter } from './middleware/rateLimiter.js';
@@ -152,6 +159,13 @@ app.use('/api/admin/emergency-types', verifyAdmin, emergencyTypesRoutes);
 app.use('/api/admin/export', verifyAdmin, exportRoutes);
 app.use('/api/admin/audit-logs', verifyAdmin, auditRoutes);
 app.use('/api/admin/analytics', verifyAdmin, analyticsRoutes);
+
+// Pricing Module Routes
+app.use('/api/pricing', pricingRoutes);
+app.use('/api/services', enhancedServiceRoutes);
+app.use('/api/taxes', taxRoutes);
+app.use('/api/zones', zoneRoutes);
+app.use('/api/emergency-pricing', emergencyPricingRoutes);
 
 // Root Status Check (includes database health)
 app.get('/status', (req, res) => {
