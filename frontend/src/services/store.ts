@@ -132,7 +132,7 @@ export const BookingStore = {
       if (!user) return;
 
       let res: any;
-      if (user.role === 'admin' || user.role === 'super_admin') {
+      if (user.role === 'admin') {
         res = await adminService.getBookings();
       } else {
         res = await bookingService.getAll();
@@ -192,7 +192,7 @@ export const NotificationStore = {
       if (!user) return;
 
       let res: any;
-      if (user.role === 'admin' || user.role === 'super_admin') {
+      if (user.role === 'admin') {
         res = await adminService.getNotifications();
       } else {
         res = await notificationService.getAll();
@@ -218,7 +218,7 @@ export const NotificationStore = {
 
   markAllRead: async (role?: 'admin' | 'mechanic' | 'user') => {
     const user = authService.getCurrentUser();
-    if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+    if (user && user.role === 'admin') {
       await adminService.markAllNotificationsRead();
     }
     await NotificationStore.fetch();
@@ -268,6 +268,16 @@ export const MechanicStore = {
 
   updateStatus: async (id: string, status: 'available' | 'busy') => {
     await mechanicService.updateStatus(id, status);
+    await MechanicStore.fetch();
+  },
+
+  update: async (id: string, data: any) => {
+    await adminService.updateMechanic(id, data);
+    await MechanicStore.fetch();
+  },
+
+  delete: async (id: string) => {
+    await adminService.deleteMechanic(id);
     await MechanicStore.fetch();
   },
 
@@ -321,7 +331,7 @@ export const CustomerStore = {
   fetch: async () => {
     try {
       const user = authService.getCurrentUser();
-      if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+      if (user && user.role === 'admin') {
         const res: any = await adminService.getUsers();
         customersCache = res.users || res || [];
         storeEmitter.notify();
@@ -395,7 +405,7 @@ export const DashboardStore = {
   fetch: async () => {
     try {
       const user = authService.getCurrentUser();
-      if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+      if (user && user.role === 'admin') {
         const res: any = await adminService.getDashboardStats();
         dashboardStats = res.stats || res || {};
         storeEmitter.notify();

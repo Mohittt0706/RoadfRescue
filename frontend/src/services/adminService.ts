@@ -10,4 +10,6 @@ export const adminService = {
   createUser: (data: any) => apiClient.post('/admin/users', data),
   updateUser: (id: string, data: any) => apiClient.put(`/admin/users/${id}`, data),
   deleteUser: (id: string) => apiClient.delete(`/admin/users/${id}`),
+  updateMechanic: (id: string, data: any) => apiClient.put(`/admin/mechanics/${id}`, data),
+  deleteMechanic: (id: string) => apiClient.delete(`/admin/mechanics/${id}`),
 };

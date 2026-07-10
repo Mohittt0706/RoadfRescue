@@ -8,7 +8,6 @@ import {
   SlidersHorizontal, ArrowUpDown, CalendarDays, Navigation
 } from 'lucide-react';
 import { BookingStore } from '../services/store';
-import { api } from '../api';
 import '../booking-history.css';
 import MechanicTrackerModal from './MechanicTrackerModal';
 
@@ -334,7 +333,7 @@ export default function MyBookings({ userId }: MyBookingsProps) {
   const handleCancel = async (bookingId: string) => {
     if (!confirm('Are you sure you want to cancel this booking?')) return;
     try {
-      await api.bookings.update(bookingId, { status: 'Cancelled', note: 'Cancelled by customer' });
+      await BookingStore.updateStatus(bookingId, 'Cancelled', 'Cancelled by customer');
       loadBookings();
     } catch { /* handled */ }
   };

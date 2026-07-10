@@ -4,7 +4,7 @@ import {
   RefreshCw, Camera, Info, CheckCircle, Square, Copy,
   MessageSquare, Paperclip
 } from 'lucide-react';
-import { streamChat, analyzeImage } from '../api';
+import { streamChat, analyzeImage } from '../services/chatService';
 import BookingModal from './BookingModal';
 
 interface AIAssistantProps {
@@ -420,11 +420,11 @@ export default function AIAssistant({ onBookService }: AIAssistantProps) {
       await streamChat(
         apiMessages,
         convId,
-        (chunk) => {
+        (chunk: string) => {
           accumulated += chunk;
           setStreamingText(accumulated);
         },
-        (full) => {
+        (full: string) => {
           const { cleanText, service } = parseServiceRecommendation(full);
           const aiMsg: Message = {
             id: 'msg-' + Date.now() + '-ai',
@@ -439,7 +439,7 @@ export default function AIAssistant({ onBookService }: AIAssistantProps) {
           setIsAiTyping(false);
           setAbortController(null);
         },
-        (err) => {
+        (err: string) => {
           const errMsg: Message = {
             id: 'msg-' + Date.now() + '-err',
             text: `Sorry, I encountered an error: ${err}. Please try again.`,
