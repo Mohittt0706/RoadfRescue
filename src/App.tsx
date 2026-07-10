@@ -55,6 +55,8 @@ import EmergencyTracking from './components/EmergencyTracking';
 import MechanicDashboard from './components/MechanicDashboard';
 import { auth, setAuthToken, getAuthToken, isTokenExpired } from './api';
 import Silk from './components/Silk';
+import { demoAuthService } from './services/demoAuth';
+import { BookingStore, NotificationStore, EmergencyStore } from './services/store';
 
 // Types for Chatbot
 interface Message {
@@ -110,17 +112,47 @@ export default function App() {
     localStorage.setItem('roadrescue-theme', theme);
   }, [theme]);
 
-  /* --- Check Existing Auth Token on Mount --- */
+  /* --- Check Existing Demo Auth Session on Mount --- */
   useEffect(() => {
-    const token = getAuthToken();
-    if (token && !isTokenExpired(token)) {
-      auth.me().then((user) => {
-        setCurrentUser(user);
-      }).catch(() => {
-        setAuthToken(null);
-      });
+    const user = demoAuthService.getCurrentUser();
+    if (user) {
+      setCurrentUser(user);
+      // Auto redirect to their matching dashboard if they reload and are logged in
+      if (user.role === 'admin') {
+        setCurrentView('admin');
+      } else if (user.role === 'mechanic') {
+        setCurrentView('mechanicDashboard');
+      } else {
+        setCurrentView('dashboard');
+      }
     }
   }, []);
+
+  useEffect(() => {
+    const updateNotificationsCount = () => {
+      const user = demoAuthService.getCurrentUser();
+      if (user) {
+        const count = NotificationStore.getUnreadCount(user.role);
+        setNotificationCount(count);
+      }
+    };
+    updateNotificationsCount();
+    const unsubscribe = NotificationStore.subscribe(updateNotificationsCount);
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  /* --- Route Protection for private dashboards --- */
+  useEffect(() => {
+    const user = demoAuthService.getCurrentUser();
+    
+    if (currentView === 'dashboard' && (!user || user.role !== 'user')) {
+      setCurrentView('login');
+    } else if (currentView === 'mechanicDashboard' && (!user || user.role !== 'mechanic')) {
+      setCurrentView('login');
+    } else if (currentView === 'admin' && (!user || user.role !== 'admin')) {
+      setCurrentView('login');
+    }
+  }, [currentView, currentUser]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -411,35 +443,31 @@ export default function App() {
 
     setAuthLoading(true);
     try {
-      let result: any;
+      // TODO: Replace demo login with backend API authentication
+      let user: any;
       let targetView: string;
 
       if (selectedLoginRole === 'admin') {
-        result = await auth.adminLogin(loginEmail, loginPassword);
-        setAuthToken(result.token);
-        setCurrentUser({ ...result.admin, role: 'admin' });
+        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'admin');
         targetView = 'admin';
       } else if (selectedLoginRole === 'mechanic') {
-        result = await auth.mechanicLogin(loginEmail, loginPassword);
-        setAuthToken(result.token);
-        setCurrentUser({ ...result.mechanic, role: 'mechanic' });
+        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'mechanic');
         targetView = 'mechanicDashboard';
       } else {
-        result = await auth.login(loginEmail, loginPassword);
-        setAuthToken(result.token);
-        setCurrentUser(result.user);
+        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'user');
         targetView = 'dashboard';
       }
 
+      setCurrentUser(user);
       setAuthLoading(false);
       setAuthSuccess('login');
       setTimeout(() => {
         setAuthSuccess(null);
         setCurrentView(targetView as any);
-      }, 1500);
+      }, 1000); // Redirect after 1 second
     } catch (err: any) {
       setAuthLoading(false);
-      setLoginErrors({ general: err.message || 'Login failed. Please check your credentials.' });
+      setLoginErrors({ general: err.message || 'Invalid email or password' });
       setShakeCard(true);
       setTimeout(() => setShakeCard(false), 400);
     }
@@ -471,17 +499,12 @@ export default function App() {
 
     setAuthLoading(true);
     try {
-      const result = await auth.register({
+      // TODO: Replace demo login with backend API authentication
+      const user = await demoAuthService.register({
         name: signupName,
         email: signupEmail,
-        phone: signupPhone,
-        password: signupPassword,
-        vehicleType: signupVehicle,
-        vehicleNumber: signupCarNum,
-        emergencyContact: signupEmergencyContact,
       });
-      setAuthToken(result.token);
-      setCurrentUser(result.user);
+      setCurrentUser(user);
       setAuthLoading(false);
       setAuthSuccess('signup');
       triggerConfetti();
@@ -499,6 +522,8 @@ export default function App() {
 
   /* --- Unified Logout Handler --- */
   const handleLogout = () => {
+    // TODO: Replace demo login with backend API authentication
+    demoAuthService.logout();
     setAuthToken(null);
     setCurrentUser(null);
     setCurrentView('landing');
@@ -539,9 +564,7 @@ export default function App() {
 
   // Handle booking confirmed
   const handleBookingConfirmed = (booking: any) => {
-    setShowBookingModal(false);
     setNotificationCount(prev => prev + 1);
-    alert(`Booking Confirmed!\n\nBooking ID: ${booking.id}\nService: ${booking.service_name}\nPrice: ₹${booking.price.toLocaleString('en-IN')}\n\nYou will receive a confirmation shortly.`);
   };
 
 
@@ -762,6 +785,25 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* Active SOS Timeline */}
+                {activeEmergencyId && (
+                  <div className="db-card" style={{ marginBottom: '1.5rem', border: '2px solid rgba(239,68,68,0.25)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        🚨 Active SOS Emergency
+                      </h3>
+                      <button 
+                        onClick={() => { setCurrentView('emergencyTrack'); }}
+                        className="btn btn-emergency" 
+                        style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}
+                      >
+                        Track Now →
+                      </button>
+                    </div>
+                    <SOSTimeline emergencyId={activeEmergencyId} />
+                  </div>
+                )}
 
                 {/* Grid stats/rewards */}
                 <div className="db-grid">
@@ -1339,11 +1381,11 @@ export default function App() {
                     <Check size={40} />
                   </div>
                   <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>
-                    {authSuccess === 'login' ? 'Authentication Secured' : 'Account Configured!'}
+                    {authSuccess === 'login' ? 'Login Successful' : 'Account Configured!'}
                   </h3>
                   <p style={{ color: 'var(--text-secondary)' }}>
                     {authSuccess === 'login' 
-                      ? 'Welcome back. Syncing localized coordinates...' 
+                      ? 'Redirecting to your dashboard...' 
                       : 'Launching diagnostics dashboard...'}
                   </p>
                 </div>
@@ -2218,5 +2260,89 @@ export default function App() {
         }}
       />
     </>
+  );
+}
+
+/* SOS Timeline Component for User Dashboard */
+function SOSTimeline({ emergencyId }: { emergencyId: string }) {
+  const [emergency, setEmergency] = useState<any>(null);
+
+  useEffect(() => {
+    const load = () => {
+      const data = EmergencyStore.getById(emergencyId);
+      setEmergency(data);
+    };
+    load();
+    const unsub = EmergencyStore.subscribe(load);
+    return () => unsub();
+  }, [emergencyId]);
+
+  if (!emergency) return null;
+
+  const statuses = ['Pending', 'Accepted', 'Mechanic Assigned', 'Mechanic En Route', 'Arrived', 'Completed'];
+  const currentIdx = statuses.indexOf(emergency.status);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Emergency ID</div>
+          <div style={{ fontWeight: 800, fontFamily: 'monospace', color: '#ef4444', fontSize: '0.9rem' }}>{emergency.id}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Emergency Type</div>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{emergency.emergency_type}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Assigned Mechanic</div>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{emergency.assigned_mechanic || 'Pending'}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Status</div>
+          <div style={{
+            fontWeight: 800, fontSize: '0.85rem',
+            color: emergency.status === 'Completed' ? '#22c55e' : emergency.status === 'Cancelled' ? '#ef4444' : '#f59e0b'
+          }}>{emergency.status}</div>
+        </div>
+      </div>
+      <div className="timeline-stepper" style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', padding: '0.5rem 0' }}>
+        {statuses.map((s, i) => {
+          const isCompleted = currentIdx >= i;
+          const isActive = emergency.status === s;
+          return (
+            <div key={s} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', flex: 1,
+              position: 'relative'
+            }}>
+              <div style={{
+                width: i <= currentIdx ? '100%' : '0%',
+                height: '3px',
+                background: isCompleted ? '#22c55e' : 'var(--border-light)',
+                position: 'absolute', top: '10px', left: '-50%', zIndex: 0,
+                transition: 'width 0.5s ease'
+              }} />
+              <div style={{
+                width: '22px', height: '22px', borderRadius: '50%',
+                background: isCompleted ? '#22c55e' : isActive ? '#f59e0b' : 'var(--border-light)',
+                border: isActive ? '3px solid #f59e0b' : 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.65rem', fontWeight: 800, color: isCompleted ? '#fff' : 'transparent',
+                position: 'relative', zIndex: 1,
+                transition: 'all 0.3s ease'
+              }}>
+                {isCompleted ? '✓' : ''}
+              </div>
+              <span style={{
+                fontSize: '0.6rem', fontWeight: isActive ? 800 : 600,
+                color: isCompleted ? '#22c55e' : isActive ? '#f59e0b' : 'var(--text-muted)',
+                textAlign: 'center', maxWidth: '80px', lineHeight: 1.2
+              }}>
+                {s === 'Pending' ? 'Pending' : s === 'Accepted' ? 'Accepted' : s === 'Mechanic Assigned' ? 'Assigned' : s === 'Mechanic En Route' ? 'On Route' : s === 'Arrived' ? 'Arrived' : 'Completed'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

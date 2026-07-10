@@ -7,6 +7,7 @@ import {
   Camera, FileText, User, Truck
 } from 'lucide-react';
 import '../incoming-requests.css';
+import { BookingStore, NotificationStore } from '../services/store';
 
 interface IncomingRequestsPageProps {
   onBack: () => void;
@@ -109,14 +110,65 @@ const quickReplies = [
 
 export default function IncomingRequestsPage({ onBack }: IncomingRequestsPageProps) {
   /* --- State --- */
-  const [requests, setRequests] = useState(initialRequests);
-  const [detailRequest, setDetailRequest] = useState<Request | null>(null);
-  const [chatRequest, setChatRequest] = useState<Request | null>(null);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [detailRequest, setDetailRequest] = useState<any | null>(null);
+  const [chatRequest, setChatRequest] = useState<any | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<{ text: string; out: boolean }[]>([
     { text: "Hi! I'm on my way to assist you.", out: true },
   ]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const loadData = () => {
+    const userStr = localStorage.getItem('user');
+    let email = 'rajesh@roadrescue.in';
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u.email) email = u.email;
+      } catch (e) {}
+    }
+
+    const list = BookingStore.getAll()
+      .filter((b: any) => b.mechanic_email?.toLowerCase() === email.toLowerCase() && b.status === 'Mechanic Assigned')
+      .map((b: any) => ({
+        id: b.id,
+        customer: b.customer,
+        initials: b.customer.split(' ').map((n: any) => n[0]).join(''),
+        avatarColor: '#EC4899',
+        phone: b.phone,
+        vehicle: b.vehicle,
+        vehicleType: 'Sedan',
+        plate: b.vehicle_number,
+        issue: b.service,
+        description: b.notes || 'Roadside assistance requested.',
+        distance: '2.5 km',
+        eta: b.eta,
+        serviceTime: '25 min',
+        earnings: Math.floor((b.price || 0) * 0.8),
+        priority: 'high',
+        timeLeft: 90,
+        matchScore: 95,
+        location: b.address,
+        images: 0,
+        paymentMethod: b.paymentMethod || 'Cash',
+        emergencyContact: 'N/A',
+        customerNotes: b.notes || '',
+        aiSeverity: 'Medium',
+        aiRepairTime: '20-30 min',
+        aiTools: 'Wrench, Jack',
+        aiParts: 'N/A',
+        aiCost: `₹${b.price}`,
+        aiConfidence: 94
+      }));
+    setRequests(list);
+  };
+
+  useEffect(() => {
+    loadData();
+    const unsubscribe = BookingStore.subscribe(loadData);
+    return () => unsubscribe();
+  }, []);
 
   /* --- Filters --- */
   const [filterVehicle, setFilterVehicle] = useState('all');
@@ -172,12 +224,19 @@ export default function IncomingRequestsPage({ onBack }: IncomingRequestsPagePro
 
   /* --- Handlers --- */
   const handleAccept = useCallback((id: string) => {
-    setRequests(prev => prev.filter(r => r.id !== id));
-    setCounters(prev => ({ ...prev, accepted: prev.accepted + 1, new: prev.new - 1 }));
+    BookingStore.updateStatus(id, 'Mechanic Accepted');
+    NotificationStore.create({
+      title: '✅ Job Accepted',
+      message: `Mechanic accepted job ${id}`,
+      role: 'admin',
+      type: 'alert'
+    });
+    loadData();
   }, []);
 
   const handleDecline = useCallback((id: string) => {
-    setRequests(prev => prev.filter(r => r.id !== id));
+    BookingStore.updateStatus(id, 'Cancelled', 'Mechanic declined the request');
+    loadData();
   }, []);
 
   const handleSendMessage = useCallback(() => {

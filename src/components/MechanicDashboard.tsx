@@ -8,6 +8,7 @@ import {
   Fuel, AlertCircle, Timer, BadgeCheck, CircleDot, Play, RotateCcw
 } from 'lucide-react';
 import '../mechanic-dashboard.css';
+import { BookingStore, NotificationStore, MechanicStore, EmergencyStore } from '../services/store';
 import IncomingRequestsPage from './IncomingRequestsPage';
 import ActiveJobsPage from './ActiveJobsPage';
 import EarningsDashboard from './EarningsDashboard';
@@ -159,6 +160,139 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
   /* --- Performance metrics --- */
   const [perfMetrics, setPerfMetrics] = useState({ acceptance: 0, completion: 0, response: 0, satisfaction: 0, total: 0, onTime: 0 });
 
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  const loadData = () => {
+    const userStr = localStorage.getItem('user');
+    let email = 'rajesh@roadrescue.in';
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        setCurrentUser(u);
+        if (u.email) email = u.email;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const allBookings = BookingStore.getAll();
+    const allSOS = EmergencyStore.getAll();
+    
+    // SOS Requests assigned to this mechanic
+    const sosRequests = allSOS
+      .filter((s: any) => s.assigned_mechanic_email?.toLowerCase() === email.toLowerCase() && s.status === 'Mechanic Assigned')
+      .map((s: any) => ({
+        id: s.id,
+        customer: s.customer_name,
+        vehicle: s.vehicle_type || s.vehicle,
+        plate: s.vehicle_number,
+        problem: `🚨 SOS: ${s.emergency_type}`,
+        distance: '2.5 km',
+        eta: s.eta || '15 mins',
+        earnings: Math.floor((s.price || 0) * 0.8),
+        priority: (s.priority === 'Critical' ? 'high' : s.priority === 'Urgent' ? 'medium' : 'low') as 'high' | 'medium' | 'low',
+        timeLeft: 30,
+        isSOS: true
+      }));
+
+    // SOS Active Jobs accepted by this mechanic
+    const sosActiveJobs = allSOS
+      .filter((s: any) => s.assigned_mechanic_email?.toLowerCase() === email.toLowerCase() && ['Accepted', 'Mechanic Assigned', 'Mechanic En Route', 'Arrived', 'In Progress'].includes(s.status))
+      .map((s: any) => ({
+        id: s.id,
+        customer: s.customer_name,
+        vehicle: s.vehicle_type || s.vehicle,
+        issue: `🚨 SOS: ${s.emergency_type}`,
+        status: (s.status === 'Mechanic Assigned' ? 'accepted' : s.status === 'Mechanic En Route' ? 'driving' : s.status === 'Arrived' ? 'arrived' : s.status === 'In Progress' ? 'repairing' : 'accepted') as 'accepted' | 'driving' | 'arrived' | 'repairing' | 'completed',
+        eta: s.eta || '15 mins',
+        distance: '2.5 km'
+      }));
+
+    // Regular booking requests
+    const bookingRequests = allBookings
+      .filter((b: any) => b.mechanic_email?.toLowerCase() === email.toLowerCase() && b.status === 'Mechanic Assigned')
+      .map((b: any) => ({
+        id: b.id,
+        customer: b.customer,
+        vehicle: b.vehicle,
+        plate: b.vehicle_number,
+        problem: b.service,
+        distance: '2.5 km',
+        eta: b.eta,
+        earnings: Math.floor((b.price || 0) * 0.8),
+        priority: 'high' as const,
+        timeLeft: 30,
+        isSOS: false
+      }));
+
+    // Active jobs from regular bookings
+    const bookingActiveJobs = allBookings
+      .filter((b: any) => b.mechanic_email?.toLowerCase() === email.toLowerCase() && ['Accepted', 'Mechanic Accepted', 'Mechanic Started', 'Mechanic Nearby', 'Arrived', 'In Progress'].includes(b.status))
+      .map((b: any) => ({
+        id: b.id,
+        customer: b.customer,
+        vehicle: b.vehicle,
+        issue: b.service,
+        status: b.status === 'Mechanic Assigned' ? 'accepted' as const : b.status === 'Mechanic Started' ? 'driving' as const : b.status === 'Arrived' ? 'arrived' as const : b.status === 'In Progress' ? 'repairing' as const : 'accepted' as const,
+        eta: b.eta,
+        distance: '2.5 km'
+      }));
+
+    // Merge SOS + regular, SOS first
+    const incomingRequests = [...sosRequests, ...bookingRequests];
+
+    const activeJobs = [...sosActiveJobs, ...bookingActiveJobs];
+
+    // Notifications
+    const notifs = NotificationStore.getAll()
+      .filter((n: any) => n.role === 'mechanic')
+      .map((n: any) => ({
+        id: n.id,
+        type: n.type || 'request',
+        text: n.message,
+        time: 'Just now',
+        unread: !n.read
+      }));
+
+    setRequests(incomingRequests);
+    setJobs(activeJobs);
+    setNotifications(notifs);
+
+    // Compute stats
+    const completedBookingCount = allBookings.filter((b: any) => b.mechanic_email?.toLowerCase() === email.toLowerCase() && b.status === 'Completed').length;
+    const completedSOSCount = allSOS.filter((s: any) => s.assigned_mechanic_email?.toLowerCase() === email.toLowerCase() && s.status === 'Completed').length;
+    const completedCount = completedBookingCount + completedSOSCount;
+    const activeCount = activeJobs.length;
+    const pendingCount = incomingRequests.length;
+    const totalEarnings = allBookings
+      .filter((b: any) => b.mechanic_email?.toLowerCase() === email.toLowerCase() && b.status === 'Completed')
+      .reduce((sum: number, b: any) => sum + ((b.price || 0) * 0.8), 0);
+    const sosEarnings = allSOS
+      .filter((s: any) => s.assigned_mechanic_email?.toLowerCase() === email.toLowerCase() && s.status === 'Completed')
+      .reduce((sum: number, s: any) => sum + ((s.price || 0) * 0.8), 0);
+
+    setStats({
+      completed: completedCount,
+      active: activeCount,
+      pending: pendingCount,
+      earnings: totalEarnings + sosEarnings,
+      rating: 4.9
+    });
+  };
+
+  useEffect(() => {
+    loadData();
+    const unsubscribeBookings = BookingStore.subscribe(loadData);
+    const unsubscribeNotifications = NotificationStore.subscribe(loadData);
+    const unsubscribeEmergencies = EmergencyStore.subscribe(loadData);
+
+    return () => {
+      unsubscribeBookings();
+      unsubscribeNotifications();
+      unsubscribeEmergencies();
+    };
+  }, []);
+
   /* --- Animate stats --- */
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
@@ -203,8 +337,15 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
     setRequests((prev) => prev.filter((r) => r.id !== id));
     const req = requests.find((r) => r.id === id);
     if (req) {
+      // Update store status
+      if (id.startsWith('SOS-')) {
+        EmergencyStore.updateStatus(id, 'Accepted', 'Mechanic accepted');
+      } else {
+        BookingStore.updateStatus(id, 'Accepted', 'Mechanic accepted');
+      }
+
       setJobs((prev) => [...prev, {
-        id: 'j' + Date.now(),
+        id: id,
         customer: req.customer,
         vehicle: req.vehicle,
         issue: req.problem,
@@ -221,10 +362,25 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
 
   const handleAdvanceJob = useCallback((id: string) => {
     const stageOrder: ActiveJob['status'][] = ['accepted', 'driving', 'arrived', 'repairing', 'completed'];
+    const sosStatusMap: Record<string, string> = {
+      'accepted': 'Accepted',
+      'driving': 'Mechanic En Route',
+      'arrived': 'Arrived',
+      'repairing': 'In Progress',
+      'completed': 'Completed'
+    };
     setJobs((prev) => prev.map((j) => {
       if (j.id !== id) return j;
       const idx = stageOrder.indexOf(j.status);
       const next = idx < stageOrder.length - 1 ? stageOrder[idx + 1] : j.status;
+
+      // If this is an SOS job (id starts with SOS-), update EmergencyStore
+      if (id.startsWith('SOS-')) {
+        EmergencyStore.updateStatus(id, sosStatusMap[next] || 'Completed');
+      } else {
+        BookingStore.updateStatus(id, sosStatusMap[next] || 'Completed');
+      }
+
       return { ...j, status: next, eta: next === 'completed' ? 'Done' : next === 'arrived' ? '0 min' : j.eta };
     }));
   }, []);
@@ -322,9 +478,11 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
 
         <div className="md-sidebar-footer">
           <div className="md-sidebar-user">
-            <div className="md-sidebar-avatar">JD</div>
+            <div className="md-sidebar-avatar">
+              {currentUser?.name ? currentUser.name.split(' ').map((n: any) => n[0]).join('') : 'RK'}
+            </div>
             <div className="md-sidebar-user-info">
-              <div className="md-sidebar-user-name">John Doe</div>
+              <div className="md-sidebar-user-name">{currentUser?.name || 'Rajesh Kumar'}</div>
               <div className="md-sidebar-user-role">ASE Certified</div>
             </div>
           </div>
@@ -375,7 +533,9 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
 
-            <div className="md-topnav-avatar">JD</div>
+            <div className="md-topnav-avatar">
+              {currentUser?.name ? currentUser.name.split(' ').map((n: any) => n[0]).join('') : 'RK'}
+            </div>
           </div>
         </header>
 
@@ -410,7 +570,7 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
         <div className="md-content" ref={statsRef}>
           {/* === Greeting === */}
           <div className="md-page-header">
-            <h1 className="md-greeting">{greeting}, John <span>👋</span></h1>
+            <h1 className="md-greeting">{greeting}, {currentUser?.name?.split(' ')[0] || 'Rajesh'} <span>👋</span></h1>
             <p className="md-greeting-sub">
               {isOnline
                 ? "You're online and ready to assist drivers nearby."

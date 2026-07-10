@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, MapPin, Loader2, Phone, User, ShieldAlert, IndianRupee, Clock } from 'lucide-react';
-import { api } from '../api';
+import { EmergencyStore } from '../services/store';
 
 interface EmergencyBookingModalProps {
   isOpen: boolean;
@@ -180,7 +180,7 @@ export default function EmergencyBookingModal({ isOpen, onClose, onSuccess }: Em
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -195,6 +195,7 @@ export default function EmergencyBookingModal({ isOpen, onClose, onSuccess }: Em
       phone: phone.trim(),
       email: email.trim(),
       vehicle,
+      vehicle_type: vehicle,
       vehicle_number: vehicleNumber.trim().toUpperCase(),
       emergency_type: emergencyType,
       latitude,
@@ -202,26 +203,17 @@ export default function EmergencyBookingModal({ isOpen, onClose, onSuccess }: Em
       address: address.trim(),
       notes: notes.trim(),
       payment_method: paymentMethod,
-      priority
+      priority,
+      price: estimatedPrice,
+      eta: estimatedETA,
+      gps: { lat: latitude, lng: longitude }
     };
 
-    console.log('[Frontend Request] Sending SOS Emergency Payload:', payload);
+    const newEmergency = EmergencyStore.create(payload);
+    console.log('[SOS Created]:', newEmergency);
 
-    try {
-      const res = await api.emergency.create(payload);
-      console.log('[Frontend Response] Received SOS Response:', res);
-
-      if (res.success) {
-        onSuccess(res.booking);
-      } else {
-        setErrorMsg(res.error || 'Failed to submit request');
-      }
-    } catch (err: any) {
-      console.error('[Frontend Error] Emergency creation failed:', err.stack || err);
-      setErrorMsg(err.message || 'Network connection failed');
-    } finally {
-      setSubmitting(false);
-    }
+    setSubmitting(false);
+    onSuccess(newEmergency);
   };
 
   if (!isOpen) return null;

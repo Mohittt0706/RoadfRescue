@@ -7,8 +7,9 @@ import {
   IndianRupee, Zap, CheckCircle2, XCircle,
   SlidersHorizontal, ArrowUpDown, CalendarDays, Navigation
 } from 'lucide-react';
-import { api } from '../api';
+import { BookingStore } from '../services/store';
 import '../booking-history.css';
+import MechanicTrackerModal from './MechanicTrackerModal';
 
 interface MyBookingsProps {
   userId?: string;
@@ -16,6 +17,16 @@ interface MyBookingsProps {
 }
 
 const STATUS_STEPS = ['Pending', 'Accepted', 'Mechanic Assigned', 'Mechanic Arriving', 'Service Started', 'Completed'];
+
+const getStatusStepIndex = (status: string) => {
+  if (status === 'Pending Approval' || status === 'Pending') return 0;
+  if (status === 'Accepted') return 1;
+  if (status === 'Mechanic Assigned') return 2;
+  if (status === 'Mechanic Started' || status === 'Mechanic On The Way' || status === 'Mechanic Arrived') return 3;
+  if (status === 'Arrived' || status === 'In Progress' || status === 'Service Started') return 4;
+  if (status === 'Completed') return 5;
+  return 0;
+};
 
 const MOCK_BOOKINGS = [
   {
@@ -219,9 +230,12 @@ export default function MyBookings({ userId }: MyBookingsProps) {
   const [animatedStats, setAnimatedStats] = useState({ total: 0, completed: 0, active: 0, spent: 0, avgTime: 0 });
   const statsRef = useRef<HTMLDivElement>(null);
   const statsAnimated = useRef(false);
+  const [activeTrackingBooking, setActiveTrackingBooking] = useState<any | null>(null);
 
   useEffect(() => {
     loadBookings();
+    const unsubscribe = BookingStore.subscribe(loadBookings);
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -257,19 +271,14 @@ export default function MyBookings({ userId }: MyBookingsProps) {
     requestAnimationFrame(animate);
   };
 
-  const loadBookings = async () => {
-    try {
-      const data = await api.bookings.list(userId ? { userId } : {});
-      if (Array.isArray(data) && data.length > 0) {
-        setBookings(data);
-      } else {
-        setBookings(MOCK_BOOKINGS);
-      }
-    } catch {
+  const loadBookings = () => {
+    const list = BookingStore.getAll();
+    if (list && list.length > 0) {
+      setBookings(list);
+    } else {
       setBookings(MOCK_BOOKINGS);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const filteredBookings = useMemo(() => {
@@ -621,12 +630,12 @@ export default function MyBookings({ userId }: MyBookingsProps) {
                             <div className="bh-timeline-track">
                               <div
                                 className="bh-timeline-fill"
-                                style={{ width: `${(STATUS_STEPS.indexOf(booking.status) / (STATUS_STEPS.length - 1)) * 100}%` }}
+                                style={{ width: `${(getStatusStepIndex(booking.status) / (STATUS_STEPS.length - 1)) * 100}%` }}
                               />
                             </div>
                             <div className="bh-timeline-steps">
                               {STATUS_STEPS.map((step, i) => {
-                                const statusIdx = STATUS_STEPS.indexOf(booking.status);
+                                const statusIdx = getStatusStepIndex(booking.status);
                                 const isCompleted = i <= statusIdx;
                                 const isCurrent = i === statusIdx;
                                 return (
@@ -766,6 +775,11 @@ export default function MyBookings({ userId }: MyBookingsProps) {
                             {booking.status === 'Completed' && (
                               <button className="bh-action-btn bh-action-accent" onClick={() => { setRatingBooking(booking.id); setRatingValue(0); setRatingText(''); }}>
                                 <Star size={14} /> Rate
+                              </button>
+                            )}
+                            {booking.status !== 'Completed' && booking.status !== 'Cancelled' && (
+                              <button className="bh-action-btn bh-action-primary" onClick={() => setActiveTrackingBooking(booking)} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <Navigation size={14} /> Track
                               </button>
                             )}
                             {(booking.status === 'Pending' || booking.status === 'In Progress') && (
@@ -1078,6 +1092,14 @@ export default function MyBookings({ userId }: MyBookingsProps) {
       <button className="bh-float-book" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
         <Zap size={20} /> Quick Book
       </button>
+
+      {/* Mechanic Tracker Modal */}
+      <MechanicTrackerModal
+        isOpen={!!activeTrackingBooking}
+        onClose={() => setActiveTrackingBooking(null)}
+        booking={activeTrackingBooking}
+        onStatusUpdate={loadBookings}
+      />
     </div>
   );
 }

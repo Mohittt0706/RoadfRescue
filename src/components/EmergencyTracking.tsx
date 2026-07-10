@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
 import { Phone, AlertTriangle, ShieldCheck, Clock, Navigation, XCircle, ArrowLeft, Loader2, IndianRupee, FileText, CreditCard } from 'lucide-react';
-import { api } from '../api';
+import { EmergencyStore, NotificationStore } from '../services/store';
 
 interface EmergencyTrackingProps {
   emergencyId: string;
@@ -18,69 +17,29 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoice, setInvoice] = useState<any>(null);
   
-  const socketRef = useRef<any>(null);
   const countdownRef = useRef<any>(null);
 
-  // Load emergency details
-  const fetchDetails = async () => {
-    try {
-      const data = await api.emergency.get(emergencyId);
+  const fetchDetails = () => {
+    const data = EmergencyStore.getById(emergencyId);
+    if (data) {
       setEmergency(data);
-      
-      // Initialize countdown if eta_minutes exists
-      if (data.eta_minutes && data.eta_minutes > 0 && 
-          !['Completed', 'Cancelled'].includes(data.status)) {
-        setEtaCountdown(data.eta_minutes * 60); // Convert to seconds
+      if (data.eta && !['Completed', 'Cancelled'].includes(data.status)) {
+        const match = data.eta.match(/\d+/);
+        if (match) {
+          setEtaCountdown(parseInt(match[0]) * 60);
+        }
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to load tracking data');
-    } finally {
-      setLoading(false);
+    } else {
+      setErrorMsg('Emergency request details not found.');
     }
-  };
-
-  // Load invoice
-  const fetchInvoice = async () => {
-    try {
-      const data = await api.emergency.getInvoice(emergencyId);
-      setInvoice(data);
-      setShowInvoice(true);
-    } catch (err: any) {
-      console.error('Failed to load invoice:', err);
-    }
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchDetails();
-
-    // Initialize Socket.IO connection
-    const socketUrl = window.location.hostname === 'localhost' ? 'http://localhost:3001' : window.location.origin;
-    const socket = io(socketUrl);
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      console.log('Socket connected for tracking emergency:', emergencyId);
-      socket.emit('join_emergency', emergencyId);
-    });
-
-    // Handle real-time updates
-    socket.on('emergency_update', (updatedEmergency: any) => {
-      console.log('Received emergency status update via socket:', updatedEmergency);
-      setEmergency(updatedEmergency);
-      
-      // Update countdown if ETA changed
-      if (updatedEmergency.eta_minutes && updatedEmergency.eta_minutes > 0 &&
-          !['Completed', 'Cancelled'].includes(updatedEmergency.status)) {
-        setEtaCountdown(updatedEmergency.eta_minutes * 60);
-      } else {
-        setEtaCountdown(null);
-      }
-    });
-
+    const unsubscribe = EmergencyStore.subscribe(fetchDetails);
     return () => {
-      if (socket) {
-        socket.disconnect();
-      }
+      unsubscribe();
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
       }
@@ -113,21 +72,32 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleCancelRequest = async () => {
+  const handleCancelRequest = () => {
     if (!window.confirm('Are you sure you want to cancel this emergency SOS recovery request?')) return;
     
     setCancelling(true);
-    try {
-      const res = await api.emergency.updateStatus(emergencyId, 'Cancelled');
-      if (res.success) {
-        setEmergency(res.emergency);
-        setEtaCountdown(null);
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to cancel request');
-    } finally {
-      setCancelling(false);
-    }
+    EmergencyStore.updateStatus(emergencyId, 'Cancelled', 'Cancelled by user');
+    setCancelling(false);
+  };
+
+  const fetchInvoice = () => {
+    setInvoice({
+      invoice_id: `INV-${emergencyId}`,
+      emergency_id: emergencyId,
+      customer_name: emergency.customer_name,
+      vehicle: emergency.vehicle_type,
+      vehicle_number: emergency.vehicle_number,
+      emergency_type: emergency.emergency_type,
+      items: [
+        { description: `${emergency.emergency_type} Service`, amount: emergency.price || 0 },
+        { description: 'Emergency Response Fee', amount: 199 },
+        { description: 'Service Tax (18%)', amount: Math.round((emergency.price || 0) * 0.18) }
+      ],
+      total: (emergency.price || 0) + 199 + Math.round((emergency.price || 0) * 0.18),
+      payment_method: emergency.payment_method || 'UPI',
+      payment_status: 'Paid'
+    });
+    setShowInvoice(true);
   };
 
   if (loading) {
@@ -151,6 +121,9 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
       </div>
     );
   }
+
+  const statuses = ['Pending', 'Accepted', 'Mechanic Assigned', 'Mechanic En Route', 'Arrived', 'Completed'];
+  const currentStatusIdx = statuses.indexOf(emergency.status);
 
   // --- STAGE 1: SUCCESS SCREEN (FIRST VIEW AFTER BOOKING) ---
   if (showSuccess) {
@@ -185,27 +158,22 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
               <span style={{ color: 'var(--text-secondary)' }}>Emergency ID:</span>
               <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '0.88rem' }}>{emergency.id}</strong>
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Estimated Price:</span>
               <strong style={{ color: '#22c55e' }}>₹{(emergency.price || 0).toLocaleString('en-IN')}</strong>
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Estimated Arrival:</span>
               <strong style={{ color: 'var(--primary)' }}>{emergency.eta || 'Calculating...'}</strong>
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Assigned Team:</span>
               <strong style={{ color: 'var(--text-primary)' }}>{emergency.assigned_mechanic || 'Pending Assignment'}</strong>
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Emergency Type:</span>
               <strong style={{ color: 'var(--accent)' }}>{emergency.emergency_type}</strong>
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Payment Method:</span>
               <strong style={{ color: 'var(--text-primary)' }}>{emergency.payment_method}</strong>
@@ -219,7 +187,6 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
               <Phone size={14} />
               <span>Call Support</span>
             </a>
-
             <button 
               onClick={() => setShowSuccess(false)}
               className="btn btn-primary" 
@@ -236,10 +203,7 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
     );
   }
 
-  // --- STAGE 2: REAL-TIME TRACKING TIMELINE & MAP ---
-  const statuses = ['Pending', 'Accepted', 'Mechanic Assigned', 'Mechanic En Route', 'Arrived', 'Completed'];
-  const currentStatusIdx = statuses.indexOf(emergency.status);
-
+  // --- STAGE 2: REAL-TIME TRACKING TIMELINE ---
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
@@ -428,49 +392,22 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
             <h3 style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: '1.25rem' }}>🚩 Emergency Dispatch Stepper</h3>
             
             <div className="timeline-stepper">
-              {/* Step 1 */}
-              <div className={`timeline-step-item ${currentStatusIdx >= 0 ? 'completed' : ''} ${emergency.status === 'Pending' ? 'active' : ''}`}>
-                <div className="timeline-step-dot"></div>
-                <strong style={{ fontSize: '0.8rem', color: currentStatusIdx >= 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>SOS Request Submitted</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Emergency ID sequence generated. Broadcasted coordinates.</span>
-              </div>
-
-              {/* Step 2 */}
-              <div className={`timeline-step-item ${currentStatusIdx >= 1 ? 'completed' : ''} ${emergency.status === 'Accepted' ? 'active' : ''}`}>
-                <div className="timeline-step-dot"></div>
-                <strong style={{ fontSize: '0.8rem', color: currentStatusIdx >= 1 ? 'var(--text-primary)' : 'var(--text-muted)' }}>Request Accepted</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Assistance dispatch center confirmed response routing.</span>
-              </div>
-
-              {/* Step 3 */}
-              <div className={`timeline-step-item ${currentStatusIdx >= 2 ? 'completed' : ''} ${emergency.status === 'Mechanic Assigned' ? 'active' : ''}`}>
-                <div className="timeline-step-dot"></div>
-                <strong style={{ fontSize: '0.8rem', color: currentStatusIdx >= 2 ? 'var(--text-primary)' : 'var(--text-muted)' }}>Mechanic Assigned</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                  {emergency.assigned_mechanic ? `${emergency.assigned_mechanic} paired for mobilization.` : 'Pairing with closest vehicle.'}
-                </span>
-              </div>
-
-              {/* Step 4 */}
-              <div className={`timeline-step-item ${currentStatusIdx >= 3 ? 'completed' : ''} ${emergency.status === 'Mechanic En Route' ? 'active' : ''}`}>
-                <div className="timeline-step-dot"></div>
-                <strong style={{ fontSize: '0.8rem', color: currentStatusIdx >= 3 ? 'var(--text-primary)' : 'var(--text-muted)' }}>Mechanic En Route</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Towing / support truck moving. Live ETA is active.</span>
-              </div>
-
-              {/* Step 5 */}
-              <div className={`timeline-step-item ${currentStatusIdx >= 4 ? 'completed' : ''} ${emergency.status === 'Arrived' ? 'active' : ''}`}>
-                <div className="timeline-step-dot"></div>
-                <strong style={{ fontSize: '0.8rem', color: currentStatusIdx >= 4 ? 'var(--text-primary)' : 'var(--text-muted)' }}>Mechanic Arrived</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Assistance team reaches target breakdown coordinates.</span>
-              </div>
-
-              {/* Step 6 */}
-              <div className={`timeline-step-item ${currentStatusIdx >= 5 ? 'completed' : ''} ${emergency.status === 'Completed' ? 'active' : ''}`}>
-                <div className="timeline-step-dot"></div>
-                <strong style={{ fontSize: '0.8rem', color: currentStatusIdx >= 5 ? 'var(--text-primary)' : 'var(--text-muted)' }}>Recovery Completed</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Vehicle back in motion. Invoice receipt processed.</span>
-              </div>
+              {statuses.map((s, i) => (
+                <div key={s} className={`timeline-step-item ${currentStatusIdx >= i ? 'completed' : ''} ${emergency.status === s ? 'active' : ''}`}>
+                  <div className="timeline-step-dot"></div>
+                  <strong style={{ fontSize: '0.8rem', color: currentStatusIdx >= i ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                    {s === 'Pending' ? 'SOS Request Submitted' : s === 'Accepted' ? 'Request Accepted' : s === 'Mechanic Assigned' ? 'Mechanic Assigned' : s === 'Mechanic En Route' ? 'Mechanic On Route' : s === 'Arrived' ? 'Arrived' : 'Completed'}
+                  </strong>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                    {s === 'Pending' ? 'Emergency ID generated. Awaiting admin response.' :
+                     s === 'Accepted' ? 'Admin has accepted your SOS request.' :
+                     s === 'Mechanic Assigned' ? `${emergency.assigned_mechanic || 'Mechanic'} assigned to your location.` :
+                     s === 'Mechanic En Route' ? 'Mechanic is on the way to your location.' :
+                     s === 'Arrived' ? 'Mechanic has arrived at your location.' :
+                     'Service completed. Thank you!'}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -541,12 +478,6 @@ export default function EmergencyTracking({ emergencyId, onBack }: EmergencyTrac
         </div>
       )}
       
-      <style>{`
-        @keyframes scaleIn {
-          from { transform: scale(0.95); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }

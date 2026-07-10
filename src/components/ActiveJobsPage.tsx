@@ -6,12 +6,13 @@ import {
   Image, Truck, TrendingUp, ArrowUpRight, RotateCcw
 } from 'lucide-react';
 import '../active-jobs.css';
+import { BookingStore, NotificationStore } from '../services/store';
 
 interface ActiveJobsPageProps {
   onBack: () => void;
 }
 
-type JobStatus = 'driving' | 'arrived' | 'repairing' | 'completed';
+type JobStatus = 'accepted' | 'driving' | 'arrived' | 'repairing' | 'completed';
 
 interface Job {
   id: string;
@@ -106,8 +107,8 @@ const quickReplies = [
 ];
 
 export default function ActiveJobsPage({ onBack }: ActiveJobsPageProps) {
-  const [jobs, setJobs] = useState(initialJobs);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(initialJobs[0]);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [completedEarnings, setCompletedEarnings] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
@@ -116,6 +117,95 @@ export default function ActiveJobsPage({ onBack }: ActiveJobsPageProps) {
     { text: "Hi! I'm heading to your location now.", out: true },
   ]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const loadData = () => {
+    const userStr = localStorage.getItem('user');
+    let email = 'rajesh@roadrescue.in';
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u.email) email = u.email;
+      } catch (e) {}
+    }
+
+    const list = BookingStore.getAll()
+      .filter((b: any) => b.mechanic_email?.toLowerCase() === email.toLowerCase() && ['Accepted', 'Mechanic Accepted', 'Mechanic Started', 'Mechanic Nearby', 'Arrived', 'In Progress', 'Completed'].includes(b.status))
+      .map((b: any) => {
+        let status: 'accepted' | 'driving' | 'arrived' | 'repairing' | 'completed' = 'accepted';
+        let progress = 20;
+        if (b.status === 'Mechanic Accepted' || b.status === 'Accepted') {
+          status = 'accepted';
+          progress = 20;
+        } else if (b.status === 'Mechanic Started') {
+          status = 'driving';
+          progress = 40;
+        } else if (b.status === 'Arrived') {
+          status = 'arrived';
+          progress = 60;
+        } else if (b.status === 'In Progress') {
+          status = 'repairing';
+          progress = 80;
+        } else if (b.status === 'Completed') {
+          status = 'completed';
+          progress = 100;
+        }
+
+        return {
+          id: b.id,
+          customer: b.customer,
+          initials: b.customer.split(' ').map((n: any) => n[0]).join(''),
+          avatarColor: '#2563EB',
+          phone: b.phone,
+          vehicle: b.vehicle,
+          vehicleType: 'Sedan',
+          plate: b.vehicle_number,
+          serviceType: b.service,
+          issue: b.service,
+          description: b.notes || 'Roadside assistance requested.',
+          address: b.address,
+          distance: '2.5 km',
+          eta: b.eta,
+          status,
+          earnings: Math.floor((b.price || 0) * 0.8),
+          baseFee: Math.floor((b.price || 0) * 0.6),
+          distanceCharge: Math.floor((b.price || 0) * 0.1),
+          emergencyFee: 0,
+          bonus: 0,
+          tip: 0,
+          progress,
+          checklist: [
+            { label: 'Inspect Vehicle', done: progress >= 60 },
+            { label: 'Diagnose Problem', done: progress >= 60 },
+            { label: 'Repair Vehicle', done: progress >= 80 },
+            { label: 'Replace Parts', done: progress >= 80 },
+            { label: 'Test Vehicle', done: progress >= 100 },
+            { label: 'Confirm Completion', done: progress >= 100 },
+          ],
+          aiSeverity: 'Medium',
+          aiRepairTime: '20-30 min',
+          aiTools: 'Wrench, Jack',
+          aiParts: 'N/A',
+          aiConfidence: 94
+        };
+      });
+
+    setJobs(list);
+    if (list.length > 0) {
+      setSelectedJob((prev: any) => {
+        if (!prev) return list[0];
+        const updated = list.find((j: any) => j.id === prev.id);
+        return updated || list[0];
+      });
+    } else {
+      setSelectedJob(null);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    const unsubscribe = BookingStore.subscribe(loadData);
+    return () => unsubscribe();
+  }, []);
 
   /* --- Timer --- */
   const [elapsed, setElapsed] = useState(0);
@@ -131,31 +221,43 @@ export default function ActiveJobsPage({ onBack }: ActiveJobsPageProps) {
 
   /* --- Handlers --- */
   const handleAdvanceStatus = useCallback((id: string) => {
-    const order: JobStatus[] = ['driving', 'arrived', 'repairing', 'completed'];
-    setJobs((prev) => prev.map((j) => {
-      if (j.id !== id) return j;
-      const idx = order.indexOf(j.status);
-      const next = idx < order.length - 1 ? order[idx + 1] : j.status;
-      const newProgress = next === 'completed' ? 100 : next === 'repairing' ? 75 : next === 'arrived' ? 55 : 35;
-      if (next === 'completed') {
-        setCompletedEarnings(j.earnings);
-        setTimeout(() => setShowSuccess(true), 500);
-      }
-      return { ...j, status: next, progress: newProgress, eta: next === 'completed' ? 'Done' : next === 'arrived' ? '0 min' : j.eta };
-    }));
+    const b = BookingStore.getById(id);
+    if (!b) return;
+
+    let nextStatus = '';
+    if (b.status === 'Mechanic Assigned' || b.status === 'Mechanic Accepted' || b.status === 'Accepted') {
+      nextStatus = 'Mechanic Started';
+    } else if (b.status === 'Mechanic Started') {
+      nextStatus = 'Arrived';
+    } else if (b.status === 'Arrived') {
+      nextStatus = 'In Progress';
+    } else if (b.status === 'In Progress') {
+      nextStatus = 'Completed';
+      setCompletedEarnings(Math.floor((b.price || 0) * 0.8));
+      setTimeout(() => setShowSuccess(true), 500);
+
+      // Create completion notifications
+      NotificationStore.create({
+        title: '🎉 Service Completed',
+        message: `Service for ${b.customer} has been completed successfully.`,
+        role: 'admin',
+        type: 'alert'
+      });
+      NotificationStore.create({
+        title: '💳 Payment Received',
+        message: `Payment of ₹${b.price} received for booking ${id}.`,
+        role: 'user',
+        type: 'payment'
+      });
+    }
+
+    if (nextStatus) {
+      BookingStore.updateStatus(id, nextStatus);
+    }
   }, []);
 
   const handleToggleCheck = useCallback((jobId: string, checkIdx: number) => {
-    setJobs((prev) => prev.map((j) => {
-      if (j.id !== jobId) return j;
-      const newChecklist = j.checklist.map((c, i) => i === checkIdx ? { ...c, done: !c.done } : c);
-      return { ...j, checklist: newChecklist };
-    }));
-    setSelectedJob((prev) => {
-      if (!prev || prev.id !== jobId) return prev;
-      const newChecklist = prev.checklist.map((c, i) => i === checkIdx ? { ...c, done: !c.done } : c);
-      return { ...prev, checklist: newChecklist };
-    });
+    // Local-only visual toggle or can stay local since checklist state is derived from progress
   }, []);
 
   const handleSendMessage = useCallback(() => {
@@ -186,6 +288,7 @@ export default function ActiveJobsPage({ onBack }: ActiveJobsPageProps) {
   };
 
   const getStatusLabel = (s: JobStatus) => {
+    if (s === 'accepted') return 'Accepted';
     if (s === 'driving') return 'Driving';
     if (s === 'arrived') return 'Arrived';
     if (s === 'repairing') return 'Repairing';
@@ -333,7 +436,7 @@ export default function ActiveJobsPage({ onBack }: ActiveJobsPageProps) {
                 <div className="aj-job-actions">
                   <button className="aj-btn aj-btn-primary" onClick={(e) => { handleRipple(e); handleAdvanceStatus(job.id); }}>
                     {job.status === 'completed' ? <CheckCircle size={14} /> : <ChevronRight size={14} />}
-                    {job.status === 'driving' ? 'Arrived' : job.status === 'arrived' ? 'Start Repair' : job.status === 'repairing' ? 'Complete Job' : 'Done'}
+                    {job.status === 'accepted' ? 'Start Driving' : job.status === 'driving' ? 'Arrived' : job.status === 'arrived' ? 'Start Repair' : job.status === 'repairing' ? 'Complete Job' : 'Done'}
                   </button>
                   <button className="aj-btn aj-btn-outline" onClick={() => setSelectedJob(job)}>
                     <FileText size={14} /> Details
@@ -621,7 +724,7 @@ export default function ActiveJobsPage({ onBack }: ActiveJobsPageProps) {
                   </div>
                 </div>
                 <button className="aj-complete-btn" onClick={() => { handleAdvanceStatus(selectedJob.id); }}>
-                  <CheckCircle size={18} /> Mark as Complete
+                  <CheckCircle size={18} /> {selectedJob.status === 'accepted' ? 'Start Driving' : selectedJob.status === 'driving' ? 'Arrived' : selectedJob.status === 'arrived' ? 'Start Repair' : selectedJob.status === 'repairing' ? 'Complete Job' : 'Complete Job'}
                 </button>
               </div>
             </div>
