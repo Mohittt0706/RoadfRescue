@@ -6,7 +6,7 @@ import helmet from 'helmet';
 import { config } from 'dotenv';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import { initDatabase } from './database.js';
+import { bootstrapDatabase, getDatabaseStatus, closeDatabase } from './database/index.js';
 
 // Route Imports
 import authRoutes from './authentication/auth.js';
@@ -116,14 +116,17 @@ if (!existsSync(uploadsDir)) {
 app.use('/uploads', express.static(uploadsDir));
 
 // ============================================================
-// DATABASE INITIALIZATION
+// DATABASE INITIALIZATION (with migrations, repositories, services)
 // ============================================================
-const db = initDatabase();
+const dbPath = join(process.cwd(), 'roadrescue.db');
+const { db, repositories, services, migrationResults } = bootstrapDatabase(dbPath);
 
-// Attach DB and Socket.IO to every request
+// Attach DB, Socket.IO, repositories, and services to every request
 app.use((req, res, next) => {
   req.db = db;
   req.io = io;
+  req.repos = repositories;
+  req.services = services;
   next();
 });
 
@@ -150,9 +153,15 @@ app.use('/api/admin/export', verifyAdmin, exportRoutes);
 app.use('/api/admin/audit-logs', verifyAdmin, auditRoutes);
 app.use('/api/admin/analytics', verifyAdmin, analyticsRoutes);
 
-// Root Status Check
+// Root Status Check (includes database health)
 app.get('/status', (req, res) => {
-  res.json({ success: true, message: 'RoadRescue Backend API is fully operational.' });
+  const dbStatus = getDatabaseStatus(db);
+  res.json({
+    success: true,
+    message: 'RoadRescue Backend API is fully operational.',
+    database: dbStatus,
+    migrations: migrationResults.length > 0 ? migrationResults : 'No new migrations',
+  });
 });
 
 // ============================================================
@@ -203,10 +212,27 @@ app.use(errorHandler);
 // ============================================================
 // SERVER START
 // ============================================================
+const dbStatus = getDatabaseStatus(db);
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`RoadRescue API running on port ${PORT}`);
+  console.log(`\nRoadRescue API running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`CORS Origins: ${allowedOrigins.join(', ')}`);
+  console.log(`Database Schema Version: ${dbStatus.schemaVersion}`);
+  console.log(`Migrations Applied: ${migrationResults.length || 'none'}`);
   console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? 'Configured' : 'Not configured'}`);
+  console.log('');
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n[Server] Shutting down gracefully...');
+  closeDatabase(db);
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n[Server] Received SIGTERM, shutting down...');
+  closeDatabase(db);
+  process.exit(0);
 });

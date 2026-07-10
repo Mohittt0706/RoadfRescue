@@ -82,21 +82,39 @@ function detectMaliciousPayload(obj) {
 /**
  * Middleware: Sanitize all string inputs in request body, query, and params
  * Trims whitespace and escapes XSS characters
+ * Note: In Express 5, req.query and req.params are getter-only Proxy objects.
+ *       We sanitize by mutating the underlying values via the proxy trap.
  */
 export function sanitizeInput(req, res, next) {
-  // Sanitize body
+  // Sanitize body (can be reassigned)
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeObject(req.body);
   }
 
-  // Sanitize query params
+  // Sanitize query params in-place via the Proxy
   if (req.query && typeof req.query === 'object') {
-    req.query = sanitizeObject(req.query);
+    try {
+      for (const key of Object.keys(req.query)) {
+        if (typeof req.query[key] === 'string') {
+          req.query[key] = sanitizeString(req.query[key]);
+        }
+      }
+    } catch (_) {
+      // Express 5 query Proxy may not support set in some versions — skip silently
+    }
   }
 
-  // Sanitize route params
+  // Sanitize route params in-place via the Proxy
   if (req.params && typeof req.params === 'object') {
-    req.params = sanitizeObject(req.params);
+    try {
+      for (const key of Object.keys(req.params)) {
+        if (typeof req.params[key] === 'string') {
+          req.params[key] = sanitizeString(req.params[key]);
+        }
+      }
+    } catch (_) {
+      // Express 5 params Proxy may not support set in some versions — skip silently
+    }
   }
 
   next();

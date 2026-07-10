@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { EmergencyDb } from '../emergencyDb.js';
+import { v4 as uuidv4 } from 'uuid';
 import { verifyAdmin, verifyToken } from '../authentication/middleware.js';
 import { validate, createEmergencyValidator, emergencyAssignValidator, emergencyStatusValidator, emergencyPriceValidator, emergencyEtaValidator, emergencyPaymentValidator, idParamValidator } from '../authentication/validators.js';
 import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
@@ -71,8 +71,8 @@ function calculateETA(emergencyType, priority) {
   return { min, max, text: `${min}-${max} mins`, minutes: Math.round((min + max) / 2) };
 }
 
-async function checkDuplicate(phone, emergencyType, latitude, longitude, db) {
-  const recent = await EmergencyDb.findRecentByPhone(phone, 10, db);
+async function checkDuplicate(phone, emergencyType, latitude, longitude, emergenciesRepo) {
+  const recent = await emergenciesRepo.findRecentByPhone(phone, 10);
   if (!recent || recent.length === 0) return false;
   
   return recent.some(e => {
@@ -118,7 +118,7 @@ router.post('/', createEmergencyValidator, validate, async (req, res) => {
   }
 
   try {
-    const isDuplicate = await checkDuplicate(phone, emergency_type, latitude, longitude, db);
+    const isDuplicate = await checkDuplicate(phone, emergency_type, latitude, longitude, req.repos.emergencies);
     if (isDuplicate) {
       return res.status(409).json({ 
         error: 'Similar emergency request already exists. Please wait for your existing request to be processed.' 
@@ -159,7 +159,7 @@ router.post('/', createEmergencyValidator, validate, async (req, res) => {
   };
 
   try {
-    const saved = await EmergencyDb.create(newRequest, db);
+    const saved = await req.repos.emergencies.create(newRequest);
 
     const notiId = `noti-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const notiTitle = '🚨 New Emergency Request';
@@ -201,10 +201,9 @@ router.post('/', createEmergencyValidator, validate, async (req, res) => {
 
 // GET /api/emergency - List all emergency requests (Admin Only)
 router.get('/', verifyAdmin, async (req, res) => {
-  const { db } = req;
   try {
-    const list = await EmergencyDb.find({}, db);
-    res.json(list);
+    const list = await req.repos.emergencies.findFiltered({}, { limit: 1000 });
+    res.json(list.data);
   } catch (error) {
     console.error('Error listing emergencies:', error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -213,10 +212,9 @@ router.get('/', verifyAdmin, async (req, res) => {
 
 // GET /api/emergency/:id - Get specific emergency detail (Public/Tracking page access)
 router.get('/:id', idParamValidator, validate, async (req, res) => {
-  const { db } = req;
   const { id } = req.params;
   try {
-    const emergency = await EmergencyDb.findById(id, db);
+    const emergency = await req.repos.emergencies.findById(id);
     if (!emergency) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
@@ -242,7 +240,7 @@ router.put('/:id', idParamValidator, validate, async (req, res) => {
   updates.updated_time = new Date();
 
   try {
-    const updated = await EmergencyDb.findByIdAndUpdate(id, updates, db);
+    const updated = await req.repos.emergencies.update(id, updates);
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
@@ -272,10 +270,11 @@ router.delete('/:id', verifyAdmin, idParamValidator, validate, async (req, res) 
   const { db, io } = req;
   const { id } = req.params;
   try {
-    const deleted = await EmergencyDb.findByIdAndDelete(id, db);
+    const deleted = await req.repos.emergencies.findById(id);
     if (!deleted) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
+    await req.repos.emergencies.delete(id);
 
     // Audit log for emergency deletion
     insertAuditLog(db, {
@@ -305,25 +304,7 @@ router.post('/assign', verifyAdmin, emergencyAssignValidator, validate, async (r
   }
 
   try {
-    const updates = {
-      assigned_mechanic: mechanic_name,
-      status: 'Mechanic Assigned',
-      updated_time: new Date()
-    };
-    
-    if (eta) {
-      updates.eta = eta;
-      const match = eta.match(/(\d+)-(\d+)/);
-      if (match) {
-        updates.eta_minutes = Math.round((parseInt(match[1]) + parseInt(match[2])) / 2);
-      }
-    }
-    
-    if (price !== undefined) {
-      updates.price = parseFloat(price);
-    }
-
-    const updated = await EmergencyDb.findByIdAndUpdate(id, updates, db);
+    const updated = await req.repos.emergencies.assignMechanic(id, mechanic_name, eta, price);
 
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
@@ -370,18 +351,17 @@ router.post('/status', verifyToken, emergencyStatusValidator, validate, async (r
   }
 
   try {
-    const updates = { status, updated_time: new Date() };
-    
+    const extras = {};
     if (status === 'Completed') {
-      updates.payment_status = 'Paid';
-      updates.invoice_id = generateInvoiceId();
+      extras.payment_status = 'Paid';
+      extras.invoice_id = generateInvoiceId();
     }
     
     if (status === 'Cancelled') {
-      updates.payment_status = 'Cancelled';
+      extras.payment_status = 'Cancelled';
     }
 
-    const updated = await EmergencyDb.findByIdAndUpdate(id, updates, db);
+    const updated = await req.repos.emergencies.updateStatus(id, status, extras);
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
@@ -416,10 +396,10 @@ router.post('/price', verifyAdmin, emergencyPriceValidator, validate, async (req
   }
 
   try {
-    const updated = await EmergencyDb.findByIdAndUpdate(id, { 
+    const updated = await req.repos.emergencies.update(id, { 
       price: parseFloat(price),
       updated_time: new Date()
-    }, db);
+    });
     
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
@@ -455,7 +435,7 @@ router.post('/eta', verifyAdmin, emergencyEtaValidator, validate, async (req, re
       }
     }
 
-    const updated = await EmergencyDb.findByIdAndUpdate(id, updates, db);
+    const updated = await req.repos.emergencies.update(id, updates);
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
@@ -493,7 +473,7 @@ router.post('/payment', verifyAdmin, emergencyPaymentValidator, validate, async 
       updates.invoice_id = generateInvoiceId();
     }
 
-    const updated = await EmergencyDb.findByIdAndUpdate(id, updates, db);
+    const updated = await req.repos.emergencies.update(id, updates);
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
@@ -510,11 +490,10 @@ router.post('/payment', verifyAdmin, emergencyPaymentValidator, validate, async 
 
 // GET /api/emergency/invoice/:id - Generate invoice data (Public/User tracking)
 router.get('/invoice/:id', idParamValidator, validate, async (req, res) => {
-  const { db } = req;
   const { id } = req.params;
   
   try {
-    const emergency = await EmergencyDb.findById(id, db);
+    const emergency = await req.repos.emergencies.findByIdForInvoice(id);
     if (!emergency) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
