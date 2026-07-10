@@ -1,20 +1,79 @@
 const API_BASE = '/api';
 
+// ---- Token Management ----
+let authToken: string | null = localStorage.getItem('roadrescue-token');
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) {
+    localStorage.setItem('roadrescue-token', token);
+  } else {
+    localStorage.removeItem('roadrescue-token');
+  }
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
+export function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return Date.now() >= payload.exp * 1000;
+  } catch {
+    return true;
+  }
+}
+
+// ---- Core Request Function ----
 interface RequestOptions extends RequestInit {
   headers?: Record<string, string>;
 }
 
 async function request(url: string, options: RequestOptions = {}): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  // Attach JWT token if available
+  const token = authToken || localStorage.getItem('roadrescue-token');
+  if (token && !isTokenExpired(token)) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers,
     ...options,
   });
+
+  if (res.status === 401 || res.status === 403) {
+    // Token expired or invalid — clear it
+    setAuthToken(null);
+    const error = await res.json().catch(() => ({ error: 'Access denied' }));
+    throw new Error(error.error || 'Access denied');
+  }
+
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || 'Request failed');
   }
   return res.json();
 }
+
+// ---- Auth API ----
+export const auth = {
+  register: (data: Record<string, unknown>) =>
+    request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+
+  login: (email: string, password: string) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+  adminLogin: (email: string, password: string) =>
+    request('/auth/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+  me: () => request('/auth/me'),
+};
 
 // Stream chat response
 export async function streamChat(
@@ -25,9 +84,15 @@ export async function streamChat(
   onError?: (error: string) => void
 ) {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = authToken || localStorage.getItem('roadrescue-token');
+    if (token && !isTokenExpired(token)) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const res = await fetch(`${API_BASE}/chat/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ messages, conversationId }),
     });
 
@@ -82,8 +147,15 @@ export async function uploadImage(file: File): Promise<{ url: string }> {
   const formData = new FormData();
   formData.append('image', file);
 
+  const headers: Record<string, string> = {};
+  const token = authToken || localStorage.getItem('roadrescue-token');
+  if (token && !isTokenExpired(token)) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}/chat/upload-image`, {
     method: 'POST',
+    headers,
     body: formData,
   });
 

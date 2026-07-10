@@ -11,6 +11,8 @@ import notificationRoutes from './routes/notifications.js';
 import paymentRoutes from './routes/payments.js';
 import chatRoutes from './routes/chat.js';
 import emergencyRoutes from './routes/emergency.js';
+import authRoutes from './routes/auth.js';
+import { verifyAdmin } from './middleware/auth.js';
 
 config();
 
@@ -32,7 +34,8 @@ app.use((req, res, next) => {
 });
 
 app.use('/api/bookings', bookingRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', verifyAdmin, adminRoutes);
 app.use('/api/mechanics', mechanicRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);

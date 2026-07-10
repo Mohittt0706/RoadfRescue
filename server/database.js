@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
 
 export function initDatabase() {
   const db = new Database('./roadrescue.db');
@@ -190,10 +191,11 @@ function seedData(db) {
   }
 
   const adminCount = db.prepare('SELECT COUNT(*) as count FROM admins').get();
-  if (adminCount.count === 0) {
-    db.prepare(`
-      INSERT INTO admins (id, name, email, password_hash, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run('admin1', 'Disha Admin', 'admin@roadrescue.in', 'admin123', 'super_admin');
-  }
+    if (adminCount.count === 0) {
+      const hashedPassword = bcrypt.hashSync('admin123', 12);
+      db.prepare(`
+        INSERT INTO admins (id, name, email, password_hash, role)
+        VALUES (?, ?, ?, ?, ?)
+      `).run('admin1', 'Disha Admin', 'admin@roadrescue.in', hashedPassword, 'super_admin');
+    }
 }

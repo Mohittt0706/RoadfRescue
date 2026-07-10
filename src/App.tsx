@@ -52,6 +52,9 @@ import AdminDashboard from './components/AdminDashboard';
 import MyBookings from './components/MyBookings';
 import EmergencyBookingModal from './components/EmergencyBookingModal';
 import EmergencyTracking from './components/EmergencyTracking';
+import MechanicLoginPage from './components/MechanicLoginPage';
+import MechanicDashboard from './components/MechanicDashboard';
+import { auth, setAuthToken, getAuthToken, isTokenExpired } from './api';
 
 // Types for Chatbot
 interface Message {
@@ -74,8 +77,13 @@ interface ConfettiItem {
 
 export default function App() {
   /* --- Routing State --- */
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'mechanicProfile' | 'checkout' | 'admin' | 'myBookings' | 'emergencyTrack'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'mechanicProfile' | 'checkout' | 'admin' | 'myBookings' | 'emergencyTrack' | 'mechanicLogin' | 'mechanicDashboard' | 'adminLogin'>('landing');
   const [checkoutData, setCheckoutData] = useState<any>(null);
+
+  /* --- Authentication State --- */
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [adminLoginError, setAdminLoginError] = useState('');
 
   /* --- Booking Modal State --- */
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -102,6 +110,18 @@ export default function App() {
     }
     localStorage.setItem('roadrescue-theme', theme);
   }, [theme]);
+
+  /* --- Check Existing Auth Token on Mount --- */
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token && !isTokenExpired(token)) {
+      auth.me().then((user) => {
+        setCurrentUser(user);
+      }).catch(() => {
+        setAuthToken(null);
+      });
+    }
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -153,54 +173,6 @@ export default function App() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-
-  /* --- Animated Counters (Intersection Observer) --- */
-  const [counts, setCounts] = useState({
-    requests: 0,
-    mechanics: 0,
-    cities: 0,
-    satisfaction: 0
-  });
-  const statsSectionRef = useRef<HTMLDivElement>(null);
-  const statsAnimated = useRef(false);
-
-  useEffect(() => {
-    if (currentView !== 'landing') return;
-
-    const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      if (entry.isIntersecting && !statsAnimated.current) {
-        statsAnimated.current = true;
-        
-        const duration = 2000;
-        const startTime = performance.now();
-
-        const animate = (currentTime: number) => {
-          const elapsedTime = currentTime - startTime;
-          const progress = Math.min(elapsedTime / duration, 1);
-          const easeProgress = progress * (2 - progress);
-
-          setCounts({
-            requests: Math.floor(easeProgress * 25000),
-            mechanics: Math.floor(easeProgress * 5000),
-            cities: Math.floor(easeProgress * 150),
-            satisfaction: parseFloat((easeProgress * 98.7).toFixed(1))
-          });
-
-          if (progress < 1) {
-            requestAnimationFrame(animate);
-          }
-        };
-
-        requestAnimationFrame(animate);
-      }
-    }, { threshold: 0.1 });
-
-    if (statsSectionRef.current) {
-      observer.observe(statsSectionRef.current);
-    }
-    return () => observer.disconnect();
-  }, [currentView]);
 
   /* --- Interactive Map Simulation State --- */
   const [mapStatus, setMapStatus] = useState<'Searching' | 'Accepted' | 'On The Way' | 'Arriving' | 'Completed'>('Searching');
@@ -345,42 +317,6 @@ export default function App() {
     simulateAiReply(text);
   };
 
-  /* --- Smartphone Mockup Screens --- */
-  const [activePhoneTab, setActivePhoneTab] = useState<'Home' | 'Tracking' | 'AI Assistant' | 'Profile'>('Home');
-
-  /* --- Collapsible Accordion (FAQ) States --- */
-  const [activeFaq, setActiveFaq] = useState<number | null>(null);
-  const toggleFaq = (index: number) => {
-    setActiveFaq(activeFaq === index ? null : index);
-  };
-
-  const faqs = [
-    {
-      q: "How fast does a mechanic arrive?",
-      a: "Our AI routing model dispatches the nearest technician in real time. On average, rescue vehicles arrive within 10 to 18 minutes depending on local traffic."
-    },
-    {
-      q: "Do I need a monthly membership subscription?",
-      a: "No! RoadRescue AI operates on a pay-as-you-go flat pricing model. You only pay when you request assistance. No annual contracts or hidden subscription fees."
-    },
-    {
-      q: "Can I track my tow truck or mechanic live?",
-      a: "Yes. Once a mechanic accepts your dispatch, you get a secure tracking link showing their live GPS coordinates, vehicle details, profile, and an animated ETA."
-    },
-    {
-      q: "What payment methods are supported?",
-      a: "We support all major credit cards, Apple Pay, Google Pay, and major digital bank integrations. Payments are processed securely via Stripe."
-    },
-    {
-      q: "What happens if I need to cancel my request?",
-      a: "You can cancel free of charge within 3 minutes of the dispatch acceptance. A small dispatch fee may apply afterward if the technician is already close to your location."
-    },
-    {
-      q: "Is medical emergency assistance integrated?",
-      a: "Yes. If our AI or your physical SOS button indicates safety risk or crash impact, the platform immediately relays critical telemetry and location data to local 911 dispatchers."
-    }
-  ];
-
   /* ==========================================================================
      AUTHENTICATION FORM STATE & HANDLERS
      ========================================================================== */
@@ -463,7 +399,7 @@ export default function App() {
     setConfetti(items);
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErrors({});
     let errors: { email?: string; password?: string } = {};
@@ -478,17 +414,25 @@ export default function App() {
     }
 
     setAuthLoading(true);
-    setTimeout(() => {
+    try {
+      const result = await auth.login(loginEmail, loginPassword);
+      setAuthToken(result.token);
+      setCurrentUser(result.user);
       setAuthLoading(false);
       setAuthSuccess('login');
       setTimeout(() => {
         setAuthSuccess(null);
         setCurrentView('dashboard');
       }, 1500);
-    }, 1800);
+    } catch (err: any) {
+      setAuthLoading(false);
+      setLoginErrors({ general: err.message || 'Login failed. Please check your credentials.' });
+      setShakeCard(true);
+      setTimeout(() => setShakeCard(false), 400);
+    }
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignupErrors({});
     let errors: { name?: string; email?: string; phone?: string; password?: string; confirmPassword?: string } = {};
@@ -513,7 +457,18 @@ export default function App() {
     }
 
     setAuthLoading(true);
-    setTimeout(() => {
+    try {
+      const result = await auth.register({
+        name: signupName,
+        email: signupEmail,
+        phone: signupPhone,
+        password: signupPassword,
+        vehicleType: signupVehicle,
+        vehicleNumber: signupCarNum,
+        emergencyContact: signupEmergencyContact,
+      });
+      setAuthToken(result.token);
+      setCurrentUser(result.user);
       setAuthLoading(false);
       setAuthSuccess('signup');
       triggerConfetti();
@@ -521,7 +476,12 @@ export default function App() {
         setAuthSuccess(null);
         setCurrentView('dashboard');
       }, 2500);
-    }, 2000);
+    } catch (err: any) {
+      setAuthLoading(false);
+      setSignupErrors({ general: err.message || 'Registration failed.' });
+      setShakeCard(true);
+      setTimeout(() => setShakeCard(false), 400);
+    }
   };
 
   const startBiometricScan = () => {
@@ -538,6 +498,41 @@ export default function App() {
         }, 1500);
       }, 1000);
     }, 2000);
+  };
+
+  /* --- Admin Login Handler --- */
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [adminAuthLoading, setAdminAuthLoading] = useState(false);
+
+  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminLoginError('');
+
+    if (!adminEmail.trim() || !adminPassword) {
+      setAdminLoginError('Email and password are required.');
+      return;
+    }
+
+    setAdminAuthLoading(true);
+    try {
+      const result = await auth.adminLogin(adminEmail, adminPassword);
+      setAuthToken(result.token);
+      setCurrentUser({ ...result.admin, role: 'admin' });
+      setAdminAuthLoading(false);
+      setCurrentView('admin');
+    } catch (err: any) {
+      setAdminAuthLoading(false);
+      setAdminLoginError(err.message || 'Invalid credentials. Access denied.');
+    }
+  };
+
+  /* --- Unified Logout Handler --- */
+  const handleLogout = () => {
+    setAuthToken(null);
+    setCurrentUser(null);
+    setCurrentView('landing');
   };
 
   /* ==========================================================================
@@ -681,7 +676,7 @@ export default function App() {
                       </div>
                       <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)', margin: '0.5rem 0' }} />
                       <button 
-                        onClick={() => { setCurrentView('landing'); setProfileDropdownOpen(false); }}
+                        onClick={() => { handleLogout(); setProfileDropdownOpen(false); }}
                         className="btn btn-secondary" 
                         style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', justifyContent: 'flex-start', gap: '0.5rem' }}
                       >
@@ -749,13 +744,15 @@ export default function App() {
               >
                 📋 My Bookings
               </button>
-              <button 
-                onClick={() => setCurrentView('admin')}
-                className="btn btn-secondary"
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                ⚙️ Admin Panel
-              </button>
+              {currentUser?.role === 'admin' && (
+                <button 
+                  onClick={() => setCurrentView('admin')}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
+                >
+                  ⚙️ Admin Panel
+                </button>
+              )}
             </div>
 
             {/* TAB PANEL 1: HOME PANEL */}
@@ -1060,7 +1057,7 @@ export default function App() {
             {/* TAB PANEL 4: BILLING & PROFILE */}
             {activeDashboardTab === 'profile' && (
               <div className="animate-slide-up">
-                <ProfileSettingsPage onLogout={() => setCurrentView('landing')} />
+                <ProfileSettingsPage onLogout={handleLogout} />
               </div>
             )}
 
@@ -1191,9 +1188,172 @@ export default function App() {
         </div>
       ) : currentView === 'admin' ? (
         /* ==========================================
-           ADMIN DASHBOARD
+           ADMIN DASHBOARD (Protected - Admin Only)
            ========================================== */
-        <AdminDashboard onLogout={() => setCurrentView('landing')} />
+        currentUser?.role === 'admin' ? (
+          <AdminDashboard onLogout={handleLogout} />
+        ) : (
+          /* Redirect non-admins to admin login */
+          <div className="auth-page">
+            <div className="auth-form-side" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="glass-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '2rem' }}>
+                <AlertTriangle size={48} style={{ color: 'var(--accent)', marginBottom: '1rem' }} />
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>Access Denied</h2>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+                  You don't have admin privileges. Please sign in with an admin account.
+                </p>
+                <button onClick={() => setCurrentView('adminLogin')} className="btn btn-primary" style={{ width: '100%' }}>
+                  Go to Admin Login
+                </button>
+                <button onClick={() => setCurrentView('landing')} className="btn btn-secondary" style={{ width: '100%', marginTop: '0.5rem' }}>
+                  Back to Home
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      ) : currentView === 'adminLogin' ? (
+        /* ==========================================
+           ADMIN LOGIN PAGE (Separate from User Login)
+           ========================================== */
+        <div className="auth-page">
+          <div className="auth-brand-side">
+            <div className="auth-brand-glow-blob"></div>
+            <div className="auth-brand-logo" onClick={() => setCurrentView('landing')}>
+              <span className="navbar-logo-icon" style={{ fontSize: '1.75rem' }}>🚨</span>
+              <span>RoadRescue AI</span>
+            </div>
+            <div className="auth-brand-showcase animate-slide-up">
+              <div className="auth-brand-text">
+                <h2 className="auth-brand-headline" style={{ textAlign: 'left' }}>
+                  Admin Control Center.<br />
+                  <span className="gradient-text-accent" style={{ background: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                    Secure Access Portal.
+                  </span>
+                </h2>
+                <p className="auth-brand-desc">
+                  Manage bookings, mechanics, payments, analytics, and system settings from the admin dashboard.
+                </p>
+              </div>
+              <div className="auth-trust-badges-grid">
+                <div className="auth-trust-item"><Shield size={14} /> Admin Only</div>
+                <div className="auth-trust-item"><Lock size={14} /> Encrypted</div>
+                <div className="auth-trust-item"><Check size={14} /> Role Verified</div>
+              </div>
+            </div>
+          </div>
+          <div className="auth-form-side">
+            <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', zIndex: 50 }}>
+              <button onClick={toggleTheme} className="theme-toggle-btn" title="Toggle Theme">
+                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+              </button>
+            </div>
+            <div className="auth-card-entrance glass-card" style={{ width: '100%' }}>
+              <div className="auth-form-header">
+                <h2 className="auth-form-title" style={{ textAlign: 'left' }}>Admin Sign In</h2>
+                <p className="auth-form-subtitle">
+                  <span className="auth-form-switch-link" onClick={() => setCurrentView('login')}>
+                    ← Back to User Login
+                  </span>
+                </p>
+              </div>
+
+              {adminLoginError && (
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  color: 'var(--accent)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  marginBottom: '1rem'
+                }}>
+                  <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: '0.35rem' }} />
+                  {adminLoginError}
+                </div>
+              )}
+
+              <form onSubmit={handleAdminLoginSubmit}>
+                <div className={`auth-input-group ${focusedField === 'adminEmail' ? 'focused' : ''} ${adminEmail ? 'has-value' : ''}`}>
+                  <input 
+                    type="email" 
+                    id="adminEmail"
+                    className="auth-input-field"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    onFocus={() => setFocusedField('adminEmail')}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                  <Mail className="auth-input-icon" size={18} />
+                  <label htmlFor="adminEmail" className="auth-input-label">Admin Email</label>
+                </div>
+
+                <div className={`auth-input-group ${focusedField === 'adminPassword' ? 'focused' : ''} ${adminPassword ? 'has-value' : ''}`}>
+                  <input 
+                    type={showAdminPassword ? 'text' : 'password'} 
+                    id="adminPassword"
+                    className="auth-input-field"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    onFocus={() => setFocusedField('adminPassword')}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                  <Lock className="auth-input-icon" size={18} />
+                  <label htmlFor="adminPassword" className="auth-input-label">Password</label>
+                  <button 
+                    type="button" 
+                    className="auth-pw-toggle" 
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                  >
+                    {showAdminPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={adminAuthLoading}
+                  style={{ width: '100%', padding: '1rem', marginTop: '0.5rem' }}
+                >
+                  {adminAuthLoading ? (
+                    <span className="chatbot-typing" style={{ background: 'transparent', border: 'none', padding: 0 }}>
+                      <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
+                      <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
+                      <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
+                    </span>
+                  ) : (
+                    <><Shield size={16} /> Sign In as Admin</>
+                  )}
+                </button>
+              </form>
+
+              <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                <p>Default admin: <strong>admin@roadrescue.in</strong></p>
+                <p>Password: <strong>admin123</strong></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : currentView === 'mechanicDashboard' ? (
+        /* ==========================================
+           MECHANIC DASHBOARD (PREMIUM)
+           ========================================== */
+        <MechanicDashboard
+          theme={theme}
+          toggleTheme={toggleTheme}
+          onLogout={handleLogout}
+        />
+      ) : currentView === 'mechanicLogin' ? (
+        /* ==========================================
+           MECHANIC LOGIN PAGE (PREMIUM)
+           ========================================== */
+        <MechanicLoginPage
+          theme={theme}
+          toggleTheme={toggleTheme}
+          onBack={handleLogout}
+          onLoginSuccess={() => setCurrentView('mechanicDashboard')}
+        />
       ) : currentView !== 'landing' ? (
         /* ==========================================
            AUTHENTICATION VIEW (SPLIT-SCREEN LOGIN/SIGNUP)
@@ -1493,6 +1653,22 @@ export default function App() {
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', borderLeft: '3px solid var(--primary)', paddingLeft: '0.5rem' }}>
                       ⚡ We will send a secure sign-in token to your registered email above. Click it to log in instantly.
                     </p>
+                  )}
+
+                  {loginErrors.general && (
+                    <div style={{
+                      padding: '0.75rem 1rem',
+                      borderRadius: '8px',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      color: 'var(--accent)',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      marginBottom: '1rem'
+                    }}>
+                      <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: '0.35rem' }} />
+                      {loginErrors.general}
+                    </div>
                   )}
 
                   {/* Login Form Aux Controls */}
@@ -1808,12 +1984,8 @@ export default function App() {
               <nav className="navbar-menu">
                 {[
                   { id: 'home', label: 'Home' },
-                  { id: 'features', label: 'Features' },
                   { id: 'services', label: 'Services' },
                   { id: 'how-it-works', label: 'How It Works' },
-                  { id: 'reviews', label: 'Reviews' },
-                  { id: 'faq', label: 'FAQ' },
-                  { id: 'contact', label: 'Contact' },
                 ].map((item) => (
                   <li key={item.id}>
                     <a
@@ -1844,12 +2016,18 @@ export default function App() {
                   Login
                 </button>
                 <button
+                  onClick={() => setCurrentView('mechanicLogin')}
+                  className="navbar-login-btn"
+                >
+                  Mechanic Login
+                </button>
+                <button
                   onClick={() => setCurrentView('signup')}
                   className="btn btn-secondary"
                 >
                   Sign Up
                 </button>
-                <a href="#emergency" className="btn btn-emergency">🚨 Emergency SOS</a>
+                <a href="#emergency" className="btn btn-emergency btn-sos">🚨 SOS</a>
               </div>
 
               <button
@@ -1865,12 +2043,8 @@ export default function App() {
               <div className="mobile-menu-drawer">
                 {[
                   { id: 'home', label: 'Home' },
-                  { id: 'features', label: 'Features' },
                   { id: 'services', label: 'Services' },
                   { id: 'how-it-works', label: 'How It Works' },
-                  { id: 'reviews', label: 'Reviews' },
-                  { id: 'faq', label: 'FAQ' },
-                  { id: 'contact', label: 'Contact' },
                 ].map((item) => (
                   <a
                     key={item.id}
@@ -1889,6 +2063,8 @@ export default function App() {
                 <hr className="mobile-divider" />
                 <div className="mobile-actions">
                   <button onClick={() => { setCurrentView('login'); setMobileMenuOpen(false); }} className="btn btn-secondary">Login</button>
+                  <button onClick={() => { setCurrentView('mechanicLogin'); setMobileMenuOpen(false); }} className="btn btn-secondary">Mechanic Login</button>
+                  <button onClick={() => { setCurrentView('signup'); setMobileMenuOpen(false); }} className="btn btn-secondary">Sign Up</button>
                   <a href="#emergency" className="btn btn-emergency">🚨 Emergency SOS</a>
                 </div>
               </div>
@@ -1905,47 +2081,43 @@ export default function App() {
 
             <div className="container hero-wrapper">
               <div className="hero-content animate-slide-up">
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.5rem 1rem',
-                  borderRadius: 'var(--radius-pill)',
-                  background: 'rgba(37, 99, 235, 0.08)',
-                  color: 'var(--primary)',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  width: 'max-content'
-                }}>
-                  <Sparkles size={16} /> Premium AI Roadside Dispatch
+                <div className="hero-eyebrow">
+                  <Sparkles size={14} />
+                  <span>AI-Powered Roadside Dispatch</span>
                 </div>
 
                 <h1 className="hero-heading">
-                  Emergency Roadside <br />
-                  <span className="gradient-text">Assistance in Minutes.</span>
+                  Emergency Roadside<br />
+                  Assistance,<br />
+                  <span className="gradient-text">Powered by AI.</span>
                 </h1>
 
                 <p className="hero-subheading">
-                  Connect instantly with nearby verified mechanics using AI diagnostics and live GPS tracking. Get help anywhere, anytime with secure payments and real-time updates.
+                  24/7 AI-powered roadside assistance. Get matched with verified mechanics, live GPS tracking, and instant emergency support across India.
                 </p>
 
                 <div className="hero-ctas">
                   <a href="#emergency" className="btn btn-emergency cursor-pointer">
-                    <span>🚗</span> Get Emergency Help
+                    <span>🚨</span> Get Emergency Help
                   </a>
-                  <button 
-                    onClick={startMapSimulation} 
+                  <button
+                    onClick={startMapSimulation}
                     className="btn btn-secondary cursor-pointer"
-                    style={{ display: 'inline-flex', alignItems: 'center' }}
                   >
-                    <Play size={18} fill="currentColor" /> Watch Dispatch Demo
+                    <Play size={18} fill="currentColor" /> Try AI Diagnosis
+                  </button>
+                  <button
+                    onClick={() => setCurrentView('mechanicLogin')}
+                    className="btn-text cursor-pointer"
+                  >
+                    Mechanic Login →
                   </button>
                 </div>
 
                 <div className="hero-trust-badges">
                   <div className="hero-badge-item">
                     <Check size={16} className="hero-badge-icon" />
-                    <span>Available 24/7</span>
+                    <span>24/7 Available</span>
                   </div>
                   <div className="hero-badge-item">
                     <Check size={16} className="hero-badge-icon" />
@@ -1963,7 +2135,7 @@ export default function App() {
               </div>
 
               {/* Right Side Mockup */}
-              <div className="hero-visual-container animate-fade-in" style={{ animationDelay: '0.2s' }}>
+              <div className="hero-visual-container animate-fade-in" style={{ animationDelay: '0.3s' }}>
                 <div className="hero-mockup-wrapper">
                   <div className="hero-3d-scene">
                     <svg viewBox="0 0 400 400" style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-lg)' }}>
@@ -2017,32 +2189,7 @@ export default function App() {
                   <div className="floating-element float-lightning">
                     <span>⚡</span> AI Diagnostic
                   </div>
-                  <div className="floating-element float-rating">
-                    <Star size={14} fill="#F59E0B" color="#F59E0B" /> 4.9 Rating
-                  </div>
                 </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Stats */}
-          <section ref={statsSectionRef} className="stats-section">
-            <div className="container stats-grid">
-              <div className="stat-item">
-                <span className="stat-number">{counts.requests.toLocaleString()}+</span>
-                <span className="stat-label">Emergency Requests Done</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-number">{counts.mechanics.toLocaleString()}+</span>
-                <span className="stat-label">Verified Mechanics</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-number">{counts.cities.toLocaleString()}+</span>
-                <span className="stat-label">Cities Covered</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-number">{counts.satisfaction}%</span>
-                <span className="stat-label">Satisfaction Rate</span>
               </div>
             </div>
           </section>
@@ -2265,119 +2412,7 @@ export default function App() {
             </div>
           </section>
 
-          {/* Interactive Map */}
-          <section className="section">
-            <div className="container map-section-wrapper">
-              <div className="map-card animate-scale">
-                <div className="map-status-overlay">
-                  <div className="map-status-pill">
-                    <span className={`map-status-indicator ${mapStatus.replace(/\s+/g, '').toLowerCase()}`}></span>
-                    <span>Status: <strong>{mapStatus}</strong></span>
-                  </div>
-                  <div className="map-eta-box">
-                    <Clock size={14} />
-                    <span>ETA: {mapEta} Mins</span>
-                  </div>
-                </div>
-
-                <div className="map-svg-container">
-                  <svg className="map-svg" viewBox="0 0 500 350">
-                    <defs>
-                      <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
-                        <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(148, 163, 184, 0.08)" strokeWidth="1" />
-                      </pattern>
-                    </defs>
-                    <rect width="100%" height="100%" fill="url(#grid)" />
-
-                    <rect x="20" y="30" width="120" height="80" rx="10" fill="#E2F0D9" opacity="0.7" />
-                    <rect x="300" y="40" width="160" height="90" rx="10" fill="#E2F0D9" opacity="0.7" />
-                    <rect x="60" y="240" width="140" height="80" rx="10" fill="#E2F0D9" opacity="0.7" />
-
-                    <path d="M 0,120 L 500,120" className="map-road-network map-road-main" />
-                    <path d="M 250,0 L 250,350" className="map-road-network map-road-main" />
-                    <path d="M 0,250 L 500,250" className="map-road-network map-road-main" />
-                    <path d="M 100,0 L 100,350" className="map-road-network map-road-inner" />
-                    <path d="M 400,0 L 400,350" className="map-road-network map-road-inner" />
-
-                    {mapStatus !== 'Searching' && (
-                      <path 
-                        d="M 100,120 L 250,120 L 250,250 L 450,250" 
-                        fill="none" 
-                        stroke="var(--primary)" 
-                        strokeWidth="6" 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        opacity="0.85"
-                        strokeDasharray="480"
-                        strokeDashoffset={480 - (routeLineProgress / 100) * 480}
-                      />
-                    )}
-
-                    <g transform="translate(450, 250)">
-                      <circle cx="0" cy="0" r="16" fill="var(--accent)" opacity="0.2" className="map-pulse-circle" />
-                      <circle cx="0" cy="0" r="6" fill="var(--accent)" />
-                      <text x="-18" y="-12" fill="var(--text-primary)" fontSize="9" fontWeight="700">Your Location</text>
-                    </g>
-
-                    <g transform="translate(100, 120)">
-                      <circle cx="0" cy="0" r="5" fill="var(--secondary)" />
-                      <circle cx="0" cy="0" r="12" fill="var(--secondary)" opacity="0.15" />
-                      <text x="-30" y="-12" fill="var(--text-secondary)" fontSize="8" fontWeight="600">Apex Rescue Station</text>
-                    </g>
-
-                    <g transform={`translate(${truckPos.x}, ${truckPos.y})`}>
-                      <circle cx="0" cy="0" r="12" fill="var(--primary)" opacity="0.25" className="map-pulse-circle" />
-                      <rect x="-10" y="-7" width="20" height="14" fill="var(--primary)" rx="2" />
-                      <rect x="4" y="-5" width="5" height="10" fill="#FFF" />
-                      <circle cx="-5" cy="8" r="3" fill="#1E293B" />
-                      <circle cx="5" cy="8" r="3" fill="#1E293B" />
-                    </g>
-                  </svg>
-                </div>
-
-                <div className="map-controls-overlay">
-                  <div className="map-route-info">
-                    <div className="map-route-title">Rescue Route Tracker</div>
-                    <div className="map-route-meta">Distance: {mapDist} miles | Avg Speed: 24mph</div>
-                  </div>
-                  <button 
-                    onClick={startMapSimulation} 
-                    disabled={isSimulating}
-                    className="btn btn-primary"
-                    style={{ fontSize: '0.85rem', padding: '0.6rem 1.2rem' }}
-                  >
-                    {isSimulating ? 'Dispatch Active...' : '🚨 Simulate SOS Dispatch'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="map-content-right animate-slide-up">
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.5rem 1rem',
-                  borderRadius: 'var(--radius-pill)',
-                  background: 'rgba(37, 99, 235, 0.08)',
-                  color: 'var(--primary)',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  marginBottom: '1rem'
-                }}>
-                  <Navigation size={16} /> Live GPS Routing System
-                </div>
-                <h2 style={{ textAlign: 'left', marginBottom: '1.5rem' }}>Interactive Live Tracking</h2>
-                <p style={{ marginBottom: '1.5rem' }}>
-                  Watch dispatch logic run in real time. Press <strong>Simulate SOS Dispatch</strong> to witness our routing engine match a responder, lock down the optimal street grid coordinates, and track progress live.
-                </p>
-                <p>
-                  Your dispatch undergoes a status pipeline from <code>Searching</code> ➔ <code>Accepted</code> ➔ <code>On The Way</code> ➔ <code>Arriving</code>, giving you exact transparency and reducing rescue anxiety.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Timeline */}
+          {/* How It Works */}
           <section id="how-it-works" className="section" style={{ background: 'var(--light-surface)' }}>
             <div className="container">
               <h2>How It Works</h2>
@@ -2422,312 +2457,6 @@ export default function App() {
             </div>
           </section>
 
-          {/* Why Choose Us */}
-          <section id="features" className="section">
-            <div className="container">
-              <h2>Why Choose RoadRescue AI</h2>
-              <p style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 3rem auto' }}>
-                Our features are built from the ground up for speed, verified security, and absolute reliability.
-              </p>
-
-              <div className="bento-grid">
-                <div className="bento-card large animate-slide-up">
-                  <div className="bento-icon-box"><Navigation size={22} /></div>
-                  <h3 className="bento-title">Real-Time Precision GPS</h3>
-                  <p className="bento-desc">
-                    We don't play guessing games with address fields. Our platform tracks live coordinates down to 3 meters, matching the closest possible responder and updating routing paths relative to real-time city traffic bottlenecks.
-                  </p>
-                </div>
-
-                <div className="bento-card animate-slide-up" style={{ animationDelay: '0.1s' }}>
-                  <div className="bento-icon-box"><Shield size={22} /></div>
-                  <h3 className="bento-title">Verified Mechanics</h3>
-                  <p className="bento-desc">
-                    Every single partner mechanic undergoes intensive background vetting, certification verification, and regular rating audits to ensure premium service quality.
-                  </p>
-                </div>
-
-                <div className="bento-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
-                  <div className="bento-icon-box"><CreditCard size={22} /></div>
-                  <h3 className="bento-title">Secure Billing</h3>
-                  <p className="bento-desc">
-                    Flat rates are calculated beforehand. Secure escrow integration ensures mechanics only get paid once the job is fully completed.
-                  </p>
-                </div>
-
-                <div className="bento-card large animate-slide-up" style={{ animationDelay: '0.3s' }}>
-                  <div className="bento-icon-box"><Sparkles size={22} /></div>
-                  <h3 className="bento-title">AI Diagnostics & Image Scanning</h3>
-                  <p className="bento-desc">
-                    Unsure why the engine is smoking or knocking? Snap a quick photo or describe the noise to our AI diagnostic engine. It queries thousands of manufacturer manuals to isolate potential faults and equips the dispatched mechanic with the correct replacement components.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* App Preview */}
-          <section className="section" style={{ background: 'var(--light-surface)' }}>
-            <div className="container mobile-preview-wrapper">
-              <div className="phone-mockup-container animate-scale">
-                <div className="phone-frame">
-                  <div className="phone-island"></div>
-                  <div className="phone-screen">
-                    <div className="phone-header">
-                      <span>9:41</span>
-                      <span style={{ color: 'var(--primary)' }}>RoadRescue AI</span>
-                      <span style={{ fontSize: '0.65rem' }}>🔋 100%</span>
-                    </div>
-
-                    <div className="phone-content">
-                      {activePhoneTab === 'Home' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                          <div style={{ background: 'var(--light-bg)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                            <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>🚨 Need Help Now?</div>
-                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '0.25rem 0' }}>Request high-speed roadside dispatch in one click.</p>
-                            <button className="btn btn-emergency" style={{ fontSize: '0.7rem', padding: '0.5rem 1rem', width: '100%' }}>Get Help</button>
-                          </div>
-                          <div style={{ background: 'var(--light-bg)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                            <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>Active Diagnoses</div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Diagnostic History</span>
-                              <span style={{ background: 'rgba(34,197,94,0.1)', color: 'var(--secondary)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 700 }}>Clean</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {activePhoneTab === 'Tracking' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', height: '100%' }}>
-                          <div style={{ background: '#E2E8F0', height: '150px', borderRadius: 'var(--radius-sm)', position: 'relative', overflow: 'hidden' }}>
-                            <div style={{ position: 'absolute', top: '40%', left: '45%', fontWeight: 800, color: 'var(--primary)' }}>🗺️ MAP</div>
-                            <div style={{ position: 'absolute', bottom: '10px', left: '10px', background: 'black', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem' }}>ETA: 8m</div>
-                          </div>
-                          <div style={{ background: 'var(--light-bg)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                            <div style={{ fontWeight: 700 }}>Tow Master #402</div>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Status: Driving to you</div>
-                          </div>
-                        </div>
-                      )}
-
-                      {activePhoneTab === 'AI Assistant' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', height: '100%', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            <div style={{ background: 'var(--light-bg)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-light)', maxWidth: '90%' }}>
-                              Hey, describe your trouble!
-                            </div>
-                            <div style={{ background: 'var(--primary)', color: 'white', padding: '0.5rem', borderRadius: '8px', alignSelf: 'flex-end', maxWidth: '90%' }}>
-                              Flat tire on I-95
-                            </div>
-                            <div style={{ background: 'var(--light-bg)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-light)', maxWidth: '90%' }}>
-                              🛠 Dispatching tire team. ETA: 12 minutes. Price: $49.
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {activePhoneTab === 'Profile' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center', textAlign: 'center', paddingTop: '1rem' }}>
-                          <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: '#CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>👤</div>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>Sarah Jenkins</div>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Premium Member | Tesla Model 3</div>
-                          </div>
-                          <div style={{ width: '100%', background: 'var(--light-bg)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-light)', textAlign: 'left', fontSize: '0.65rem' }}>
-                            <div>💳 Visa **** 4920</div>
-                            <div style={{ marginTop: '0.25rem' }}>🛡 State Farm Policy Verified</div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="phone-footer">
-                      <div className={`phone-tab-icon cursor-pointer ${activePhoneTab === 'Home' ? 'active' : ''}`} onClick={() => setActivePhoneTab('Home')}>
-                        <Smartphone size={14} />
-                        <span>Home</span>
-                      </div>
-                      <div className={`phone-tab-icon cursor-pointer ${activePhoneTab === 'Tracking' ? 'active' : ''}`} onClick={() => setActivePhoneTab('Tracking')}>
-                        <Navigation size={14} />
-                        <span>Track</span>
-                      </div>
-                      <div className={`phone-tab-icon cursor-pointer ${activePhoneTab === 'AI Assistant' ? 'active' : ''}`} onClick={() => setActivePhoneTab('AI Assistant')}>
-                        <Sparkles size={14} />
-                        <span>AI Assistant</span>
-                      </div>
-                      <div className={`phone-tab-icon cursor-pointer ${activePhoneTab === 'Profile' ? 'active' : ''}`} onClick={() => setActivePhoneTab('Profile')}>
-                        <User size={14} />
-                        <span>Profile</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="phone-control-panel animate-slide-up">
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.5rem 1rem',
-                  borderRadius: 'var(--radius-pill)',
-                  background: 'rgba(37, 99, 235, 0.08)',
-                  color: 'var(--primary)',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  width: 'max-content'
-                }}>
-                  <Smartphone size={16} /> Premium Native Mobile App
-                </div>
-                <h2>Mobile App Preview</h2>
-                <p style={{ marginBottom: '1rem' }}>
-                  We support a fully integrated native application. Toggle the buttons below to interact with screens inside the smartphone mockup frame.
-                </p>
-
-                <div className={`phone-tab-trigger-card ${activePhoneTab === 'Home' ? 'active' : ''}`} onClick={() => setActivePhoneTab('Home')}>
-                  <div className="phone-trigger-icon"><Smartphone size={20} /></div>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>One-Click SOS Dashboard</div>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Instantly request emergency help in a single tap.</p>
-                  </div>
-                </div>
-
-                <div className={`phone-tab-trigger-card ${activePhoneTab === 'Tracking' ? 'active' : ''}`} onClick={() => setActivePhoneTab('Tracking')}>
-                  <div className="phone-trigger-icon"><Navigation size={20} /></div>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>Live Tracker Screen</div>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Follow the exact path of your dispatched tow responder.</p>
-                  </div>
-                </div>
-
-                <div className={`phone-tab-trigger-card ${activePhoneTab === 'AI Assistant' ? 'active' : ''}`} onClick={() => setActivePhoneTab('AI Assistant')}>
-                  <div className="phone-trigger-icon"><Sparkles size={20} /></div>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>AI Vehicle Diagnoser</div>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Troubleshoot error codes and get immediate costs.</p>
-                  </div>
-                </div>
-
-                <div className={`phone-tab-trigger-card ${activePhoneTab === 'Profile' ? 'active' : ''}`} onClick={() => setActivePhoneTab('Profile')}>
-                  <div className="phone-trigger-icon"><User size={20} /></div>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>User Profile & Insurance</div>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Verify roadside coverages and card payment details.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Reviews */}
-          <section id="reviews" className="section" style={{ overflow: 'hidden' }}>
-            <div className="container">
-              <h2>Loved by Drivers Everywhere</h2>
-              <p style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-                Hear from stranded motorists rescued by our AI dispatcher and network of verified mechanics.
-              </p>
-
-              <div className="reviews-carousel-wrapper">
-                <div className="reviews-carousel-track">
-                  <div className="review-card">
-                    <div className="review-stars">
-                      <Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" />
-                    </div>
-                    <p className="review-text">
-                      "I was stranded on the I-95 at 2 AM with a blown radiator. The AI Chatbot diagnosed the issue instantly and mapped a flatbed to me. Arrived in 11 minutes flat. Absolutely brilliant service!"
-                    </p>
-                    <div className="review-user-box">
-                      <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=100&h=100" alt="Sarah J." className="review-avatar" />
-                      <div>
-                        <div className="review-user-name">Sarah Jenkins</div>
-                        <div className="review-user-meta">Tesla Model 3 | Boston</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="review-card">
-                    <div className="review-stars">
-                      <Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" />
-                    </div>
-                    <p className="review-text">
-                      "Pay-as-you-go flat rates are a game changer. Standard tow truck companies wanted to charge me double because of rain. RoadRescue matched me instantly for $99 flat."
-                    </p>
-                    <div className="review-user-box">
-                      <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=100&h=100" alt="Marcus T." className="review-avatar" />
-                      <div>
-                        <div className="review-user-name">Marcus Thompson</div>
-                        <div className="review-user-meta">Ford F-150 | Seattle</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="review-card">
-                    <div className="review-stars">
-                      <Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" /><Star size={16} fill="currentColor" />
-                    </div>
-                    <p className="review-text">
-                      "My battery died in a parking garage with low clearance. The app let me select an option specifically for low ceiling garages, and they sent a responder with the correct setup. Outstanding UI."
-                    </p>
-                    <div className="review-user-box">
-                      <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100&h=100" alt="Elena R." className="review-avatar" />
-                      <div>
-                        <div className="review-user-name">Elena Rostova</div>
-                        <div className="review-user-meta">BMW X5 | Chicago</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Trusted Partners */}
-          <section className="trusted-section">
-            <div className="container">
-              <div className="trusted-title">INTEGRATED WITH LEADING PROVIDERS</div>
-              <div className="logo-ticker-container">
-                <div className="logo-ticker-track">
-                  <span className="trusted-logo" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-secondary)' }}>STATE FARM</span>
-                  <span className="trusted-logo" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-secondary)' }}>GEICO</span>
-                  <span className="trusted-logo" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-secondary)' }}>TESLA MOTORS</span>
-                  <span className="trusted-logo" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-secondary)' }}>UBER DISPATCH</span>
-                  <span className="trusted-logo" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-secondary)' }}>STRIPE PAY</span>
-                  <span className="trusted-logo" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-secondary)' }}>PROGRESSIVE</span>
-                  <span className="trusted-logo" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-secondary)' }}>VISA BRAND</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* FAQ */}
-          <section id="faq" className="section">
-            <div className="container">
-              <h2>Frequently Asked Questions</h2>
-              <p style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-                Got questions? We have answers. Find details about tracking, payments, pricing, and safety.
-              </p>
-
-              <div className="faq-accordion">
-                {faqs.map((faq, index) => (
-                  <div 
-                    key={index} 
-                    className={`faq-item ${activeFaq === index ? 'open' : ''}`}
-                  >
-                    <button 
-                      className="faq-question-btn"
-                      onClick={() => toggleFaq(index)}
-                    >
-                      <span>{faq.q}</span>
-                      <ChevronDown className="faq-chevron" size={20} />
-                    </button>
-                    <div className="faq-answer-container">
-                      <p className="faq-answer">{faq.a}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
           {/* Emergency CTA */}
           <section id="emergency" className="section emergency-cta-section">
             <div className="flashing-lights"></div>
@@ -2747,76 +2476,22 @@ export default function App() {
           </section>
 
           {/* Footer */}
-          <footer className="footer-main" id="contact">
-            <div className="container">
-              <div className="footer-grid">
-                
-                <div className="footer-brand">
-                  <div className="footer-logo">
-                    <span>🚨</span>
-                    <span style={{ color: 'var(--primary)' }}>Road</span>
-                    <span>Rescue AI</span>
-                  </div>
-                  <p className="footer-desc">
-                    High-fidelity, AI-powered roadside assistance networks matching stranded motorists with certified service specialists dynamically in under 15 minutes.
-                  </p>
-                  <div className="footer-socials">
-                    <a href="#fb" className="footer-social-icon">F</a>
-                    <a href="#tw" className="footer-social-icon">T</a>
-                    <a href="#li" className="footer-social-icon">L</a>
-                    <a href="#yt" className="footer-social-icon">Y</a>
-                  </div>
-                </div>
-
-                <div className="footer-col">
-                  <h4 className="footer-col-title">Quick Links</h4>
-                  <ul className="footer-links">
-                    <li><a href="#home" className="footer-link">Home</a></li>
-                    <li><a href="#features" className="footer-link">Features</a></li>
-                    <li><a href="#services" className="footer-link">Services</a></li>
-                    <li><a href="#how-it-works" className="footer-link">How It Works</a></li>
-                  </ul>
-                </div>
-
-                <div className="footer-col">
-                  <h4 className="footer-col-title">Services</h4>
-                  <ul className="footer-links">
-                    <li><a href="#services" className="footer-link">Towing Dispatch</a></li>
-                    <li><a href="#services" className="footer-link">Battery Boost</a></li>
-                    <li><a href="#services" className="footer-link">Tire Repair</a></li>
-                    <li><a href="#services" className="footer-link">Fuel Delivery</a></li>
-                  </ul>
-                </div>
-
-                <div className="footer-col">
-                  <h4 className="footer-col-title">Contact Us</h4>
-                  <ul className="footer-links" style={{ color: '#94A3B8' }}>
-                    <li>✉️ support@roadrescue.ai</li>
-                    <li>📞 +1 (800) 555-SOS-AI</li>
-                    <li>📍 100 Pine Street, San Francisco, CA</li>
-                  </ul>
-                </div>
-
-                <div className="footer-col footer-newsletter">
-                  <h4 className="footer-col-title">Newsletter</h4>
-                  <p style={{ fontSize: '0.85rem' }}>Subscribe to get winter safety guidelines and platform updates.</p>
-                  <div className="newsletter-input-box">
-                    <input type="email" placeholder="Your email address" className="newsletter-input" />
-                    <button className="newsletter-btn" onClick={() => alert("Thank you for subscribing!")}>
-                      <ArrowRight size={16} />
-                    </button>
-                  </div>
-                </div>
-
+          <footer style={{
+            borderTop: '1px solid var(--border-light)',
+            padding: '3rem 0',
+            textAlign: 'center'
+          }}>
+            <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, fontSize: '1.2rem' }}>
+                <span>🚨</span>
+                <span style={{ color: 'var(--primary)' }}>Road</span>
+                <span>Rescue AI</span>
               </div>
-
-              <div className="footer-bottom">
-                <p>© {new Date().getFullYear()} RoadRescue AI. All rights reserved. Created for premium hackathon demonstration.</p>
-                <div className="footer-bottom-links">
-                  <a href="#privacy" className="footer-link">Privacy Policy</a>
-                  <a href="#terms" className="footer-link">Terms of Service</a>
-                  <a href="#cookies" className="footer-link">Cookie Settings</a>
-                </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>© {new Date().getFullYear()} RoadRescue AI. All rights reserved.</p>
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <a href="#privacy" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', textDecoration: 'none' }}>Privacy Policy</a>
+                <a href="#terms" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', textDecoration: 'none' }}>Terms</a>
+                <a href="mailto:support@roadrescue.ai" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', textDecoration: 'none' }}>support@roadrescue.ai</a>
               </div>
             </div>
           </footer>
