@@ -17,6 +17,8 @@ import notificationRoutes from './routes/notifications.js';
 import paymentRoutes from './routes/payments.js';
 import chatRoutes from './routes/chat.js';
 import emergencyRoutes from './routes/emergency.js';
+import workflowRoutes from './booking_workflow/routes.js';
+import { initWorkflowDatabase } from './booking_workflow/db.js';
 
 // Admin Module Route Imports
 import servicesRoutes from './routes/services.js';
@@ -57,6 +59,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Database Initialization
 const db = initDatabase();
+initWorkflowDatabase(db);
 
 // Attach DB and Socket.IO to request
 app.use((req, res, next) => {
@@ -74,6 +77,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/emergency', emergencyRoutes);
+app.use('/api', workflowRoutes);
 
 // Admin Module Routes (Services, Emergency Types, Export, Audit, Analytics)
 app.use('/api/admin/services', verifyAdmin, servicesRoutes);
