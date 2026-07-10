@@ -8,6 +8,10 @@ import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { bootstrapDatabase, getDatabaseStatus, closeDatabase } from './database/index.js';
 
+// Logging & Reliability Imports
+import logger, { requestLogger } from './middleware/logger.js';
+import { emitWithLogging, emitToRoom, getSocketStats } from './services/socketLogger.js';
+
 // Route Imports
 import authRoutes from './authentication/auth.js';
 import bookingRoutes from './routes/bookings.js';
@@ -32,6 +36,11 @@ import taxRoutes from './routes/taxRoutes.js';
 import zoneRoutes from './routes/zoneRoutes.js';
 import emergencyPricingRoutes from './routes/emergencyPricingRoutes.js';
 
+// Reliability Module Route Imports
+import healthRoutes from './routes/healthRoutes.js';
+import configRoutes from './routes/configRoutes.js';
+import featureRoutes from './routes/featureRoutes.js';
+
 // Middleware Imports
 import { verifyAdmin } from './authentication/middleware.js';
 import { apiLimiter, authLimiter, paymentLimiter, emergencyLimiter, adminLimiter } from './middleware/rateLimiter.js';
@@ -40,6 +49,13 @@ import { sanitizeInput, blockMaliciousPayload } from './middleware/sanitize.js';
 
 // Load environment variables
 config();
+
+// ============================================================
+// LOGGING INITIALIZATION
+// ============================================================
+const logsDir = join(process.cwd(), 'logs');
+logger.init(logsDir);
+logger.info('[Server] Logger initialized', { logDir: logsDir });
 
 const app = express();
 const server = createServer(app);
@@ -97,6 +113,9 @@ app.use(sanitizeInput);
 // Block malicious payloads (SQL injection, XSS, NoSQL injection, path traversal)
 app.use(blockMaliciousPayload);
 
+// Request logging middleware
+app.use(requestLogger);
+
 // ============================================================
 // RATE LIMITING
 // ============================================================
@@ -128,6 +147,13 @@ app.use('/uploads', express.static(uploadsDir));
 const dbPath = join(process.cwd(), 'roadrescue.db');
 const { db, repositories, services, migrationResults } = bootstrapDatabase(dbPath);
 
+// ============================================================
+// RUN STARTUP HEALTH CHECKS
+// ============================================================
+// Set Socket.IO reference on health service (io is created after bootstrap)
+services.health.io = io;
+services.health.runStartupChecks();
+
 // Attach DB, Socket.IO, repositories, and services to every request
 app.use((req, res, next) => {
   req.db = db;
@@ -136,6 +162,11 @@ app.use((req, res, next) => {
   req.services = services;
   next();
 });
+
+// ============================================================
+// HEALTH & READINESS PROBES (before rate limiting)
+// ============================================================
+app.use(healthRoutes);
 
 // ============================================================
 // API ROUTING
@@ -167,6 +198,10 @@ app.use('/api/taxes', taxRoutes);
 app.use('/api/zones', zoneRoutes);
 app.use('/api/emergency-pricing', emergencyPricingRoutes);
 
+// Reliability Module Routes
+app.use('/api/config', configRoutes);
+app.use('/api/features', featureRoutes);
+
 // Root Status Check (includes database health)
 app.get('/status', (req, res) => {
   const dbStatus = getDatabaseStatus(db);
@@ -179,10 +214,10 @@ app.get('/status', (req, res) => {
 });
 
 // ============================================================
-// SOCKET.IO EVENTS
+// SOCKET.IO EVENTS (with logging)
 // ============================================================
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  logger.info('Socket client connected', { socketId: socket.id });
 
   socket.on('join_admin', () => {
     socket.join('admin_room');
@@ -207,7 +242,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    logger.info('Socket client disconnected', { socketId: socket.id });
   });
 });
 
@@ -229,6 +264,15 @@ app.use(errorHandler);
 const dbStatus = getDatabaseStatus(db);
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
+  logger.info('RoadRescue API server started', {
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development',
+    corsOrigins: allowedOrigins.join(', '),
+    schemaVersion: dbStatus.schemaVersion,
+    migrationsApplied: migrationResults.length || 'none',
+    openai: process.env.OPENAI_API_KEY ? 'Configured' : 'Not configured',
+    uptime: '0s',
+  });
   console.log(`\nRoadRescue API running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`CORS Origins: ${allowedOrigins.join(', ')}`);
@@ -238,15 +282,42 @@ server.listen(PORT, () => {
   console.log('');
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n[Server] Shutting down gracefully...');
-  closeDatabase(db);
-  process.exit(0);
+// ============================================================
+// GRACEFUL SHUTDOWN
+// ============================================================
+function gracefulShutdown(signal) {
+  logger.info(`[Server] Received ${signal}, shutting down gracefully...`);
+  console.log(`\n[Server] Received ${signal}, shutting down gracefully...`);
+
+  server.close(() => {
+    closeDatabase(db);
+    logger.info('[Server] Server closed');
+    process.exit(0);
+  });
+
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    logger.error('[Server] Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Handle unhandled rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Promise Rejection', {
+    reason: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
 });
 
-process.on('SIGTERM', () => {
-  console.log('\n[Server] Received SIGTERM, shutting down...');
-  closeDatabase(db);
-  process.exit(0);
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception', {
+    message: error.message,
+    stack: error.stack,
+  });
+  gracefulShutdown('uncaughtException');
 });

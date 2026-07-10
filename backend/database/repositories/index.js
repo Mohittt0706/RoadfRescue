@@ -14,6 +14,7 @@ import { ZoneRepository } from './zoneRepository.js';
 import { EmergencyPricingRepository } from './emergencyPricingRepository.js';
 import { TaxConfigurationRepository } from './taxConfigurationRepository.js';
 import { PricingHistoryRepository } from './pricingHistoryRepository.js';
+import { SocketFailureRepository } from './socketFailureRepository.js';
 
 /**
  * Repository instances - initialized with database reference.
@@ -39,6 +40,7 @@ export function initRepositories(db) {
     emergencyPricing: new EmergencyPricingRepository(db),
     taxConfig: new TaxConfigurationRepository(db),
     pricingHistory: new PricingHistoryRepository(db),
+    socketFailures: new SocketFailureRepository(db),
   };
   return repositories;
 }
@@ -64,4 +66,5 @@ export {
   EmergencyPricingRepository,
   TaxConfigurationRepository,
   PricingHistoryRepository,
+  SocketFailureRepository,
 };
