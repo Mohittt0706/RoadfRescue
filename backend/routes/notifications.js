@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { verifyToken } from '../middleware/auth.js';
+import { verifyToken } from '../authentication/middleware.js';
 
 const router = Router();
 

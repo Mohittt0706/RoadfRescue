@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { EmergencyDb } from '../emergencyDb.js';
-import { verifyAdmin, verifyToken } from '../middleware/auth.js';
+import { verifyAdmin, verifyToken } from '../authentication/middleware.js';
 
 const router = Router();
 
