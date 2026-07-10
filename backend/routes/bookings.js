@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { verifyToken, verifyAdmin } from '../middleware/auth.js';
+import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
 
 const router = Router();
 
@@ -178,6 +179,16 @@ router.put('/:id', verifyToken, (req, res) => {
       if (status === 'Completed') {
         db.prepare('UPDATE bookings SET payment_status = ? WHERE id = ?').run('Paid', bookingId);
       }
+
+      // Audit log for booking status change
+      insertAuditLog(db, {
+        adminId: req.user.id,
+        action: 'STATUS_CHANGE',
+        entity: 'booking',
+        entityId: bookingId,
+        description: `Booking status changed to "${status}" for ${booking.customer_name}`,
+        ipAddress: getClientIP(req),
+      });
     }
 
     // Process mechanic assignments (Admin only)
@@ -224,6 +235,16 @@ router.delete('/:id', verifyAdmin, (req, res) => {
     db.prepare('DELETE FROM payments WHERE booking_id = ?').run(bookingId);
     db.prepare('DELETE FROM notifications WHERE booking_id = ?').run(bookingId);
     db.prepare('DELETE FROM bookings WHERE id = ?').run(bookingId);
+
+    // Audit log for booking deletion
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'DELETE',
+      entity: 'booking',
+      entityId: bookingId,
+      description: `Deleted booking for ${booking.customer_name} (${booking.service_name})`,
+      ipAddress: getClientIP(req),
+    });
 
     io.to('admin_room').emit('booking_deleted', { bookingId });
 

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
+import { createUser } from '../controllers/adminController.js';
 
 const router = Router();
 
@@ -136,6 +138,9 @@ router.put('/notifications/:id/read', (req, res) => {
 // USER MANAGEMENT APIs
 // ----------------------------------------------------
 
+// POST /api/admin/users - Create a new user (admin-initiated)
+router.post('/users', createUser);
+
 // GET /api/admin/users - Get all users
 router.get('/users', (req, res) => {
   const { db } = req;
@@ -188,6 +193,16 @@ router.put('/users/:id', (req, res) => {
     `).run(newStatus, newName, newPhone, newAddress, newCity, newVehicle, userId);
 
     const updated = db.prepare('SELECT id, name, email, phone, vehicle_type, vehicle_number, status, address, city, vehicle FROM users WHERE id = ?').get(userId);
+
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'UPDATE',
+      entity: 'user',
+      entityId: userId,
+      description: `Updated user: ${updated.name}`,
+      ipAddress: getClientIP(req),
+    });
+
     res.json({ success: true, message: 'User updated successfully.', user: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to update user.', error: err.message });
@@ -206,6 +221,16 @@ router.delete('/users/:id', (req, res) => {
     }
 
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'DELETE',
+      entity: 'user',
+      entityId: userId,
+      description: `Deleted user: ${user.name} (${user.email})`,
+      ipAddress: getClientIP(req),
+    });
+
     res.json({ success: true, message: 'User account deleted successfully.' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to delete user.', error: err.message });
@@ -253,6 +278,16 @@ router.put('/mechanics/:id', (req, res) => {
     `).run(newApprovalStatus, newName, newPhone, newExp, newSpec, newStatus, mechanicId);
 
     const updated = db.prepare('SELECT id, name, email, phone, experience_years, specialization, rating, status, approval_status FROM mechanics WHERE id = ?').get(mechanicId);
+
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'UPDATE',
+      entity: 'mechanic',
+      entityId: mechanicId,
+      description: `Updated mechanic: ${updated.name} (approval: ${newApprovalStatus})`,
+      ipAddress: getClientIP(req),
+    });
+
     res.json({ success: true, message: 'Mechanic details and status updated successfully.', mechanic: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to update mechanic.', error: err.message });
@@ -271,6 +306,16 @@ router.delete('/mechanics/:id', (req, res) => {
     }
 
     db.prepare('DELETE FROM mechanics WHERE id = ?').run(mechanicId);
+
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'DELETE',
+      entity: 'mechanic',
+      entityId: mechanicId,
+      description: `Deleted mechanic: ${mechanic.name} (${mechanic.email})`,
+      ipAddress: getClientIP(req),
+    });
+
     res.json({ success: true, message: 'Mechanic account deleted successfully.' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to delete mechanic.', error: err.message });

@@ -18,6 +18,13 @@ import paymentRoutes from './routes/payments.js';
 import chatRoutes from './routes/chat.js';
 import emergencyRoutes from './routes/emergency.js';
 
+// Admin Module Route Imports
+import servicesRoutes from './routes/services.js';
+import emergencyTypesRoutes from './routes/emergencyTypes.js';
+import exportRoutes from './routes/exportRoutes.js';
+import auditRoutes from './routes/auditRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
+
 // Middlewares
 import { verifyAdmin } from './middleware/auth.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
@@ -67,6 +74,13 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/emergency', emergencyRoutes);
+
+// Admin Module Routes (Services, Emergency Types, Export, Audit, Analytics)
+app.use('/api/admin/services', verifyAdmin, servicesRoutes);
+app.use('/api/admin/emergency-types', verifyAdmin, emergencyTypesRoutes);
+app.use('/api/admin/export', verifyAdmin, exportRoutes);
+app.use('/api/admin/audit-logs', verifyAdmin, auditRoutes);
+app.use('/api/admin/analytics', verifyAdmin, analyticsRoutes);
 
 // Root Status Check
 app.get('/status', (req, res) => {

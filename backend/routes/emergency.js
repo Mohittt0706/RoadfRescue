@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { EmergencyDb } from '../emergencyDb.js';
 import { verifyAdmin, verifyToken } from '../middleware/auth.js';
+import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
 
 const router = Router();
 
@@ -245,6 +246,16 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
 
+    // Audit log for emergency update
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'UPDATE',
+      entity: 'emergency',
+      entityId: id,
+      description: `Updated emergency request for ${updated.customer_name}`,
+      ipAddress: getClientIP(req),
+    });
+
     io.to(`emergency_track_${id}`).emit('emergency_update', updated);
     io.to('admin_room').emit('emergency_list_update', updated);
 
@@ -264,6 +275,17 @@ router.delete('/:id', verifyAdmin, async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
+
+    // Audit log for emergency deletion
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'DELETE',
+      entity: 'emergency',
+      entityId: id,
+      description: `Deleted emergency request for ${deleted.customer_name} (${deleted.emergency_type})`,
+      ipAddress: getClientIP(req),
+    });
+
     io.to('admin_room').emit('emergency_deleted', { id });
     res.json({ success: true, message: 'Emergency request deleted' });
   } catch (error) {
@@ -305,6 +327,16 @@ router.post('/assign', verifyAdmin, async (req, res) => {
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
+
+    // Audit log for emergency mechanic assignment
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'UPDATE',
+      entity: 'emergency',
+      entityId: id,
+      description: `Assigned mechanic "${mechanic_name}" to emergency for ${updated.customer_name}`,
+      ipAddress: getClientIP(req),
+    });
 
     io.to(`emergency_track_${id}`).emit('emergency_update', updated);
     io.to('admin_room').emit('emergency_list_update', updated);
@@ -352,6 +384,16 @@ router.post('/status', verifyToken, async (req, res) => {
     if (!updated) {
       return res.status(404).json({ error: 'Emergency request not found' });
     }
+
+    // Audit log for emergency status change
+    insertAuditLog(db, {
+      adminId: req.user.id,
+      action: 'STATUS_CHANGE',
+      entity: 'emergency',
+      entityId: id,
+      description: `Emergency status changed to "${status}" for ${updated.customer_name}`,
+      ipAddress: getClientIP(req),
+    });
 
     io.to(`emergency_track_${id}`).emit('emergency_update', updated);
     io.to('admin_room').emit('emergency_list_update', updated);

@@ -171,6 +171,40 @@ export function initDatabase() {
       expires_at DATETIME NOT NULL,
       blacklisted INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS services (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL,
+      duration_estimate TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS emergency_types (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      base_price REAL NOT NULL,
+      eta_min INTEGER DEFAULT 15,
+      eta_max INTEGER DEFAULT 30,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      admin_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      entity TEXT NOT NULL,
+      entity_id TEXT,
+      description TEXT,
+      ip_address TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Run migrations safely
@@ -265,6 +299,54 @@ function seedData(db) {
       }
     });
     insertMany(mechanics);
+  }
+
+  // Populate services table
+  const serviceCount = db.prepare('SELECT COUNT(*) as count FROM services').get();
+  if (serviceCount.count === 0) {
+    const insertService = db.prepare(`
+      INSERT INTO services (id, name, description, price, duration_estimate, is_active)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const services = [
+      ['svc-001', 'Flat Tire Repair', 'Repair or replace flat tires on roadside', 699, '30-45 min', 1],
+      ['svc-002', 'Battery Jump Start', 'Jump start dead battery or replace if needed', 999, '20-30 min', 1],
+      ['svc-003', 'Fuel Delivery', 'Emergency fuel delivery to your location', 799, '25-35 min', 1],
+      ['svc-004', 'Engine Breakdown Diagnosis', 'Complete engine diagnosis and temporary fix', 1499, '45-60 min', 1],
+      ['svc-005', 'Car Towing', 'Tow vehicle to nearest authorized workshop', 1999, '30-50 min', 1],
+      ['svc-006', 'Lockout Assistance', 'Unlock vehicle when keys are locked inside', 899, '15-25 min', 1],
+    ];
+    const insertManyServices = db.transaction((items) => {
+      for (const item of items) {
+        insertService.run(...item);
+      }
+    });
+    insertManyServices(services);
+  }
+
+  // Populate emergency types
+  const emergencyTypeCount = db.prepare('SELECT COUNT(*) as count FROM emergency_types').get();
+  if (emergencyTypeCount.count === 0) {
+    const insertType = db.prepare(`
+      INSERT INTO emergency_types (id, name, description, base_price, eta_min, eta_max, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const types = [
+      ['et-001', 'Flat Tire', 'Puncture or blowout requiring tire repair/replacement', 699, 15, 25, 1],
+      ['et-002', 'Dead Battery', 'Battery drained or dead requiring jump start/replacement', 999, 10, 20, 1],
+      ['et-003', 'Fuel Delivery', 'Ran out of fuel and need emergency delivery', 799, 20, 30, 1],
+      ['et-004', 'Car Towing', 'Vehicle immobile and requires towing to workshop', 1999, 25, 40, 1],
+      ['et-005', 'Engine Breakdown', 'Engine failure or overheating on the road', 1499, 20, 35, 1],
+      ['et-006', 'Lockout Assistance', 'Locked keys inside the vehicle', 899, 10, 20, 1],
+      ['et-007', 'Accident', 'Vehicle accident requiring immediate roadside assistance', 2499, 15, 30, 1],
+      ['et-008', 'Other', 'Other emergency not listed above', 999, 15, 30, 1],
+    ];
+    const insertManyTypes = db.transaction((items) => {
+      for (const item of items) {
+        insertType.run(...item);
+      }
+    });
+    insertManyTypes(types);
   }
 
   // Populate admin
