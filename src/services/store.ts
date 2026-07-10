@@ -263,7 +263,12 @@ export const MechanicStore = {
       localStorage.setItem('rr_mechanics', JSON.stringify(DEFAULT_MECHANICS));
       return DEFAULT_MECHANICS;
     }
-    return JSON.parse(stored);
+    try {
+      return JSON.parse(stored);
+    } catch {
+      localStorage.setItem('rr_mechanics', JSON.stringify(DEFAULT_MECHANICS));
+      return DEFAULT_MECHANICS;
+    }
   },
 
   getById: (id: string) => {

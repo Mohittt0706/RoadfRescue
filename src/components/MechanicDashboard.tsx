@@ -147,6 +147,7 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
 
   /* --- Notifications --- */
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   /* --- Stats --- */
   const [stats, setStats] = useState({ completed: 0, active: 0, pending: 0, earnings: 0, rating: 0 });
@@ -420,10 +421,7 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
     { key: 'jobs', label: 'Active Jobs', icon: Briefcase, badge: jobs.length },
     { key: 'history', label: 'Job History', icon: History },
     { key: 'earnings', label: 'Earnings', icon: DollarSign },
-    { key: 'reviews', label: 'Reviews', icon: Star },
-    { key: 'notifications', label: 'Notifications', icon: Bell, badge: notifications.filter(n => n.unread).length },
     { key: 'profile', label: 'Profile', icon: User },
-    { key: 'help', label: 'Help & Support', icon: HelpCircle },
   ];
 
   /* --- Map Markers (simulated positions) --- */
@@ -460,7 +458,7 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
               <item.icon size={18} />
               {item.label}
               {item.badge !== undefined && item.badge > 0 && (
-                <span className={`md-nav-badge ${item.key === 'notifications' ? 'success' : ''}`}>{item.badge}</span>
+                <span className="md-nav-badge">{item.badge}</span>
               )}
             </button>
           ))}

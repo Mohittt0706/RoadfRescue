@@ -53,7 +53,6 @@ import MyBookings from './components/MyBookings';
 import EmergencyBookingModal from './components/EmergencyBookingModal';
 import EmergencyTracking from './components/EmergencyTracking';
 import MechanicDashboard from './components/MechanicDashboard';
-import { auth, setAuthToken, getAuthToken, isTokenExpired } from './api';
 import Silk from './components/Silk';
 import { demoAuthService } from './services/demoAuth';
 import { BookingStore, NotificationStore, EmergencyStore } from './services/store';
@@ -443,18 +442,18 @@ export default function App() {
 
     setAuthLoading(true);
     try {
-      // TODO: Replace demo login with backend API authentication
+      // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
       let user: any;
       let targetView: string;
 
       if (selectedLoginRole === 'admin') {
-        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'admin');
+        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'admin', loginRemember);
         targetView = 'admin';
       } else if (selectedLoginRole === 'mechanic') {
-        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'mechanic');
+        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'mechanic', loginRemember);
         targetView = 'mechanicDashboard';
       } else {
-        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'user');
+        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'user', loginRemember);
         targetView = 'dashboard';
       }
 
@@ -467,7 +466,7 @@ export default function App() {
       }, 1000); // Redirect after 1 second
     } catch (err: any) {
       setAuthLoading(false);
-      setLoginErrors({ general: err.message || 'Invalid email or password' });
+      setLoginErrors({ general: err.message || 'Incorrect demo credentials.' });
       setShakeCard(true);
       setTimeout(() => setShakeCard(false), 400);
     }
@@ -522,9 +521,8 @@ export default function App() {
 
   /* --- Unified Logout Handler --- */
   const handleLogout = () => {
-    // TODO: Replace demo login with backend API authentication
+    // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
     demoAuthService.logout();
-    setAuthToken(null);
     setCurrentUser(null);
     setCurrentView('landing');
   };
@@ -1521,12 +1519,17 @@ export default function App() {
                   {/* Default credentials hint for admin */}
                   {selectedLoginRole === 'admin' && (
                     <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      <p>Default: <strong>admin@roadrescue.in</strong> / <strong>admin123</strong></p>
+                      <p>Demo: <strong>admin@roadrescue.in</strong> / <strong>admin123</strong></p>
                     </div>
                   )}
                   {selectedLoginRole === 'mechanic' && (
                     <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      <p>Default: <strong>rajesh@roadrescue.in</strong> / <strong>mechanic123</strong></p>
+                      <p>Demo: <strong>mechanic@roadrescue.in</strong> / <strong>mechanic123</strong></p>
+                    </div>
+                  )}
+                  {selectedLoginRole === 'user' && (
+                    <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <p>Demo: <strong>user@roadrescue.in</strong> / <strong>user123</strong></p>
                     </div>
                   )}
                 </form>

@@ -8,6 +8,7 @@ import {
   SlidersHorizontal, ArrowUpDown, CalendarDays, Navigation
 } from 'lucide-react';
 import { BookingStore } from '../services/store';
+import { api } from '../api';
 import '../booking-history.css';
 import MechanicTrackerModal from './MechanicTrackerModal';
 

@@ -1,61 +1,82 @@
+// TEMP MOCK AUTH
+// REMOVE WHEN BACKEND IS READY
+
+// TEMP MOCK AUTH
+// REMOVE WHEN BACKEND IS READY
 import { CustomerStore, MechanicStore } from './store';
 
-export const USERS = {
-  user: {
-    email: "disha@roadrescue.in",
-    password: "disha123",
-    role: "user" as const,
-    name: "Disha"
+// TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
+const demoUsers = [
+  {
+    role: 'user' as const,
+    email: 'user@roadrescue.in',
+    password: 'user123',
+    name: 'Demo User',
   },
-
-  mechanic: {
-    email: "rajesh@roadrescue.in",
-    password: "mechanic123",
-    role: "mechanic" as const,
-    name: "Rajesh"
+  {
+    role: 'mechanic' as const,
+    email: 'mechanic@roadrescue.in',
+    password: 'mechanic123',
+    name: 'Rajesh Mechanic',
   },
+  {
+    role: 'admin' as const,
+    email: 'admin@roadrescue.in',
+    password: 'admin123',
+    name: 'Administrator',
+  },
+];
 
-  admin: {
-    email: "admin@roadrescue.in",
-    password: "admin123",
-    role: "admin" as const,
-    name: "Admin"
-  }
-};
+const STORAGE_KEY = 'roadrescue_user';
 
 export const demoAuthService = {
-  authenticate: async (email: string, password: string, role: 'user' | 'mechanic' | 'admin') => {
-    const account = USERS[role];
-    console.log("Selected Role", role);
-    console.log("Entered Email", email);
-    console.log("Entered Password", password);
-    console.log("Expected", account);
+  // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
+  authenticate: async (
+    email: string,
+    password: string,
+    role: 'user' | 'mechanic' | 'admin',
+    rememberMe = false,
+  ) => {
+    const match = demoUsers.find(
+      (u) =>
+        u.role === role &&
+        u.email.trim().toLowerCase() === email.trim().toLowerCase() &&
+        u.password === password,
+    );
 
-    const isMatch = email.trim().toLowerCase() === account.email.toLowerCase() && password === account.password;
-    
-    console.log("Authentication Result", isMatch);
+    if (match) {
+      const user = { name: match.name, email: match.email, role: match.role };
 
-    if (isMatch) {
-      const user = { name: account.name, email: account.email, role: account.role };
-      // Store session details in localStorage
-      localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("role", account.role);
-      localStorage.setItem("loggedIn", "true");
+      // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      localStorage.setItem('user', JSON.stringify(user));
+      localStorage.setItem('role', match.role);
+      localStorage.setItem('loggedIn', 'true');
+
+      // Remember Me — persist across sessions
+      if (rememberMe) {
+        localStorage.setItem('roadrescue_remember', 'true');
+      } else {
+        localStorage.removeItem('roadrescue_remember');
+      }
+
       return user;
-    } else {
-      throw new Error("Invalid email or password");
     }
+
+    throw new Error('Incorrect demo credentials.');
   },
 
   register: async (userData: { name: string; email: string; phone?: string }) => {
     const user = {
       name: userData.name,
       email: userData.email,
-      role: 'user' as const
+      role: 'user' as const,
     };
-    localStorage.setItem("user", JSON.stringify(user));
-    localStorage.setItem("role", user.role);
-    localStorage.setItem("loggedIn", "true");
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    localStorage.setItem('user', JSON.stringify(user));
+    localStorage.setItem('role', user.role);
+    localStorage.setItem('loggedIn', 'true');
 
     CustomerStore.createOrUpdate({ name: userData.name, email: userData.email, phone: userData.phone });
     return user;
@@ -65,26 +86,38 @@ export const demoAuthService = {
     const user = {
       name: userData.name,
       email: userData.email,
-      role: 'mechanic' as const
+      role: 'mechanic' as const,
     };
-    localStorage.setItem("user", JSON.stringify(user));
-    localStorage.setItem("role", user.role);
-    localStorage.setItem("loggedIn", "true");
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    localStorage.setItem('user', JSON.stringify(user));
+    localStorage.setItem('role', user.role);
+    localStorage.setItem('loggedIn', 'true');
 
     MechanicStore.create(userData);
     return user;
   },
 
   logout: () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("role");
-    localStorage.removeItem("loggedIn");
+    // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('user');
+    localStorage.removeItem('role');
+    localStorage.removeItem('loggedIn');
+    localStorage.removeItem('roadrescue_remember');
   },
 
+  // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
   getCurrentUser: () => {
-    const loggedIn = localStorage.getItem("loggedIn") === "true";
-    const userJson = localStorage.getItem("user");
-    if (loggedIn && userJson) {
+    // Check primary mock auth key first, fall back to legacy keys
+    let userJson = localStorage.getItem(STORAGE_KEY);
+    if (!userJson) {
+      const loggedIn = localStorage.getItem('loggedIn') === 'true';
+      if (loggedIn) {
+        userJson = localStorage.getItem('user');
+      }
+    }
+    if (userJson) {
       try {
         return JSON.parse(userJson);
       } catch {
@@ -92,5 +125,5 @@ export const demoAuthService = {
       }
     }
     return null;
-  }
+  },
 };

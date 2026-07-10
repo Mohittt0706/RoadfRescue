@@ -3,17 +3,18 @@ import {
   LayoutDashboard, Calendar, Users, Wrench, CreditCard, BarChart3, 
   Bell, Settings, LogOut, TrendingUp, Clock, CheckCircle, AlertCircle,
   Search, Eye, UserPlus, Check, X, Phone, Mail, MapPin, Navigation,
-  ArrowUpRight, DollarSign, MessageSquare, Image as ImageIcon,
+  ArrowUpRight, DollarSign,
   AlertTriangle, ArrowDown, Trash2, Edit3, SlidersHorizontal,
   ChevronLeft, ChevronRight, Star, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { BookingStore, NotificationStore, MechanicStore, CustomerStore, DashboardStore, AnalyticsStore, EmergencyStore } from '../services/store';
+import AdminSettings from './AdminSettings';
 
 interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-type AdminTab = 'dashboard' | 'bookings' | 'customers' | 'mechanics' | 'payments' | 'analytics' | 'notifications' | 'ai_chats' | 'image_analyses' | 'settings' | 'emergencies';
+type AdminTab = 'dashboard' | 'bookings' | 'customers' | 'mechanics' | 'payments' | 'analytics' | 'notifications' | 'settings' | 'emergencies';
 
 export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -31,8 +32,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [selectedEmergency, setSelectedEmergency] = useState<any>(null);
   const [showEmergencyDetail, setShowEmergencyDetail] = useState(false);
   const [assignModalEmergency, setAssignModalEmergency] = useState<any>(null);
-  const [aiConversations, setAiConversations] = useState<any[]>([]);
-  const [imageAnalyses, setImageAnalyses] = useState<any[]>([]);
 
   const [customers, setCustomers] = useState<any[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -208,8 +207,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             { id: 'payments', icon: CreditCard, label: 'Payments', badge: 0 },
             { id: 'analytics', icon: BarChart3, label: 'Analytics', badge: 0 },
             { id: 'notifications', icon: Bell, label: 'Notifications', badge: stats?.unreadNotifications || 0 },
-            { id: 'ai_chats', icon: MessageSquare, label: 'AI Chats', badge: 0 },
-            { id: 'image_analyses', icon: ImageIcon, label: 'Image Analysis', badge: 0 },
             { id: 'settings', icon: Settings, label: 'Settings', badge: 0 },
           ] as const).map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
@@ -1037,90 +1034,8 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </div>
           )}
 
-          {activeTab === 'ai_chats' && (
-            <div>
-              <h3 style={{ color: '#fff', marginBottom: '1rem' }}>AI Chat Conversations ({aiConversations.length})</h3>
-              {aiConversations.length === 0 ? (
-                <div style={{ background: '#1e293b', borderRadius: '14px', padding: '2rem', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center', color: '#64748b' }}>
-                  <MessageSquare size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
-                  <p>No AI conversations yet.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {aiConversations.map((conv: any) => (
-                    <div key={conv.id} style={{
-                      background: '#1e293b', borderRadius: '10px', padding: '1rem',
-                      border: '1px solid rgba(255,255,255,0.06)',
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <div>
-                          <div style={{ fontWeight: 700, color: '#fff' }}>{conv.title}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                            {conv.message_count} messages • {new Date(conv.updated_at).toLocaleString('en-IN')}
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{conv.id?.slice(0, 12)}</span>
-                      </div>
-                      {conv.last_message && (
-                        <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#cbd5e1', maxHeight: '40px', overflow: 'hidden' }}>
-                          {conv.last_message.substring(0, 150)}...
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'image_analyses' && (
-            <div>
-              <h3 style={{ color: '#fff', marginBottom: '1rem' }}>Image Analyses ({imageAnalyses.length})</h3>
-              {imageAnalyses.length === 0 ? (
-                <div style={{ background: '#1e293b', borderRadius: '14px', padding: '2rem', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center', color: '#64748b' }}>
-                  <ImageIcon size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
-                  <p>No image analyses yet.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-                  {imageAnalyses.map((img: any) => {
-                    let diag = {};
-                    try { diag = JSON.parse(img.diagnosis || '{}'); } catch {}
-                    return (
-                      <div key={img.id} style={{
-                        background: '#1e293b', borderRadius: '14px', overflow: 'hidden',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                      }}>
-                        <img src={img.image_url} alt="Analysis" style={{ width: '100%', height: '150px', objectFit: 'cover' }} />
-                        <div style={{ padding: '1rem' }}>
-                          <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.9rem' }}>{(diag as any).issue || 'Analysis'}</div>
-                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                            <span style={{ padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
-                              {img.confidence}% confidence
-                            </span>
-                            <span style={{ padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
-                              {img.severity}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.5rem' }}>
-                            {(diag as any).estimatedCost && <div>Cost: <span style={{ color: '#22c55e', fontWeight: 700 }}>{(diag as any).estimatedCost}</span></div>}
-                            <div>{new Date(img.created_at).toLocaleString('en-IN')}</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
           {activeTab === 'settings' && (
-            <div style={{ background: '#1e293b', borderRadius: '14px', padding: '2rem', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center', color: '#64748b' }}>
-              <Settings size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
-              <h3 style={{ color: '#fff' }}>Settings</h3>
-              <p>Admin settings and configuration.</p>
-            </div>
+            <AdminSettings />
           )}
         </div>
       </main>

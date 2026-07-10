@@ -93,8 +93,8 @@ export default function BookingModal({ isOpen, onClose, serviceName, price, onBo
 
     setTimeout(() => {
       const newBooking = BookingStore.create({
-        customer: form.fullName,
-        phone: form.mobileNumber,
+        customer: form.customerName,
+        phone: form.phone,
         vehicle: form.vehicleType,
         vehicle_number: form.vehicleNumber,
         address: form.address,

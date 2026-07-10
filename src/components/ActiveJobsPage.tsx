@@ -548,11 +548,11 @@ export default function ActiveJobsPage({ onBack }: ActiveJobsPageProps) {
               <div className="aj-card-header">
                 <div className="aj-card-title"><Check size={16} /> Service Checklist</div>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  {selectedJob.checklist.filter(c => c.done).length}/{selectedJob.checklist.length}
+                  {selectedJob.checklist.filter((c: any) => c.done).length}/{selectedJob.checklist.length}
                 </span>
               </div>
               <div className="aj-checklist">
-                {selectedJob.checklist.map((item, i) => (
+                {selectedJob.checklist.map((item: any, i: number) => (
                   <div key={i} className={`aj-check-item ${item.done ? 'checked' : ''}`} onClick={() => handleToggleCheck(selectedJob.id, i)}>
                     <div className={`aj-check-box ${item.done ? 'checked' : ''}`}>
                       {item.done && <Check size={13} />}

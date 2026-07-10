@@ -269,7 +269,7 @@ export default function IncomingRequestsPage({ onBack }: IncomingRequestsPagePro
       if (sortBy === 'nearest') return parseFloat(a.distance) - parseFloat(b.distance);
       if (sortBy === 'earnings') return b.earnings - a.earnings;
       if (sortBy === 'emergency') {
-        const order = { emergency: 0, high: 1, medium: 2, normal: 3 };
+        const order: Record<string, number> = { emergency: 0, high: 1, medium: 2, normal: 3 };
         return order[a.priority] - order[b.priority];
       }
       return 0;

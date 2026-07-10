@@ -42,10 +42,38 @@ async function request(url: string, options: RequestOptions = {}): Promise<any> 
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${url}`, {
-    headers,
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${url}`, {
+      headers,
+      ...options,
+    });
+  } catch (err) {
+    console.warn(`API request failed (backend unavailable): ${url}`);
+    // Return fallback data based on url pattern
+    if (url.includes('/auth')) {
+      throw new Error('Server unreachable. Please check your connection and try again.');
+    }
+    if (url.includes('/bookings')) {
+      return { bookings: [], error: 'Backend unavailable - using local storage' };
+    }
+    if (url.includes('/mechanics')) {
+      return { mechanics: [], error: 'Backend unavailable - using local storage' };
+    }
+    if (url.includes('/emergency')) {
+      return { emergencies: [], error: 'Backend unavailable - using local storage' };
+    }
+    if (url.includes('/notifications')) {
+      return { notifications: [], error: 'Backend unavailable - using local storage' };
+    }
+    if (url.includes('/chat')) {
+      throw new Error('Chat service is currently unavailable. Please try again later.');
+    }
+    if (url.includes('/admin')) {
+      return { stats: {}, error: 'Backend unavailable - using local storage' };
+    }
+    return { error: 'Backend unavailable' };
+  }
 
   if (res.status === 401 || res.status === 403) {
     // Token expired or invalid — clear it
