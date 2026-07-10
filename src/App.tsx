@@ -548,6 +548,14 @@ export default function App() {
 
   return (
     <>
+      <div className="global-silk-bg-container">
+        <Silk
+          speed={theme === 'dark' ? 1.2 : 1.8}
+          scale={0.9}
+          color={theme === 'dark' ? '#2563EB' : '#3B82F6'}
+          noiseIntensity={theme === 'dark' ? 0.8 : 0.4}
+        />
+      </div>
       {/* ==========================================
           DASHBOARD SCREEN VIEW
           ========================================== */}
@@ -1790,12 +1798,10 @@ export default function App() {
           </header>
 
           {/* Hero */}
-          <section id="home" className="section" style={{ overflow: 'hidden', paddingBottom: '2rem' }}>
-            <div className="hero-gradient-blobs">
-              <div className="blob blob-1"></div>
-              <div className="blob blob-2"></div>
-              <div className="blob blob-3"></div>
-            </div>
+          <section id="home" className="section hero-section">
+            <div className="hero-noise"></div>
+            <div className="hero-radial-bg-text"></div>
+            <div className="hero-radial-bg-illus"></div>
 
             <div className="container hero-wrapper">
               <div className="hero-content animate-slide-up">
@@ -1806,21 +1812,21 @@ export default function App() {
 
                 <h1 className="hero-heading">
                   Emergency Roadside<br />
-                  Assistance,<br />
+                  Assistance Across India<br />
                   <span className="gradient-text">Powered by AI.</span>
                 </h1>
 
                 <p className="hero-subheading">
-                  24/7 AI-powered roadside assistance. Get matched with verified mechanics, live GPS tracking, and instant emergency support across India.
+                  Get instant roadside help, AI diagnostics, verified mechanics, and live GPS tracking—all in one platform.
                 </p>
 
                 <div className="hero-ctas">
-                  <a href="#emergency" className="btn btn-emergency cursor-pointer">
+                  <a href="#emergency" className="btn btn-hero-primary cursor-pointer">
                     <span>🚨</span> Get Emergency Help
                   </a>
                   <button
                     onClick={startMapSimulation}
-                    className="btn btn-secondary cursor-pointer"
+                    className="btn btn-hero-secondary cursor-pointer"
                   >
                     <Play size={18} fill="currentColor" /> Try AI Diagnosis
                   </button>
@@ -1828,26 +1834,23 @@ export default function App() {
 
                 <div className="hero-trust-badges">
                   <div className="hero-badge-item">
-                    <Check size={16} className="hero-badge-icon" />
-                    <span>24/7 Available</span>
+                    <Check size={14} className="hero-badge-icon" />
+                    <span>24×7 Support</span>
                   </div>
                   <div className="hero-badge-item">
-                    <Check size={16} className="hero-badge-icon" />
+                    <Check size={14} className="hero-badge-icon" />
                     <span>Verified Mechanics</span>
                   </div>
                   <div className="hero-badge-item">
-                    <Check size={16} className="hero-badge-icon" />
-                    <span>AI Powered</span>
-                  </div>
-                  <div className="hero-badge-item">
-                    <Check size={16} className="hero-badge-icon" />
-                    <span>Live GPS Tracking</span>
+                    <Check size={14} className="hero-badge-icon" />
+                    <span>AI Powered Dispatch</span>
                   </div>
                 </div>
               </div>
 
               {/* Right Side Mockup */}
               <div className="hero-visual-container animate-fade-in" style={{ animationDelay: '0.3s' }}>
+                <div className="hero-illustration-glow"></div>
                 <div className="hero-mockup-wrapper">
                   <div className="hero-3d-scene">
                     <svg viewBox="0 0 400 400" style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-lg)' }}>
@@ -1887,19 +1890,19 @@ export default function App() {
                   </div>
 
                   <div className="floating-element float-gps">
-                    <MapPin size={16} color="var(--primary)" /> 📍 GPS Live
+                    <MapPin size={14} color="var(--primary)" /> <span>GPS Live</span>
                   </div>
                   <div className="floating-element float-wrench">
-                    <Wrench size={16} color="var(--primary)" /> 🔧 Mechanic Matched
+                    <Wrench size={14} color="var(--primary)" /> <span>Mechanic Matched</span>
                   </div>
                   <div className="floating-element float-sos">
-                    <ShieldAlert size={16} color="var(--accent)" /> 🚨 SOS Active
+                    <ShieldAlert size={14} color="var(--accent)" /> <span>SOS Active</span>
                   </div>
                   <div className="floating-element float-shield">
-                    <Shield size={16} color="var(--secondary)" /> 🛡 Verified Safe
+                    <Shield size={14} color="var(--secondary)" /> <span>Verified Safe</span>
                   </div>
                   <div className="floating-element float-lightning">
-                    <span>⚡</span> AI Diagnostic
+                    <span>⚡</span> <span>AI Diagnostic</span>
                   </div>
                 </div>
               </div>
@@ -1923,11 +1926,7 @@ export default function App() {
                     <li className="service-feature-item"><Check size={14} /> Spare Swap</li>
                     <li className="service-feature-item"><Check size={14} /> Puncture Plugging</li>
                   </ul>
-                  <div className="service-meta">
-                    <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">12 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹699</span></div>
-                  </div>
-                  <button onClick={() => handleBookService('Flat Tire Repair', 699)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
+                  <button onClick={() => handleBookService('Flat Tire Repair', 699)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%', marginTop: 'auto' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.1s' }}>
@@ -1938,11 +1937,7 @@ export default function App() {
                     <li className="service-feature-item"><Check size={14} /> Professional Jump</li>
                     <li className="service-feature-item"><Check size={14} /> Alternator Diagnostics</li>
                   </ul>
-                  <div className="service-meta">
-                    <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">10 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹999</span></div>
-                  </div>
-                  <button onClick={() => handleBookService('Battery Jump Start', 999)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
+                  <button onClick={() => handleBookService('Battery Jump Start', 999)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%', marginTop: 'auto' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
@@ -1953,11 +1948,7 @@ export default function App() {
                     <li className="service-feature-item"><Check size={14} /> 5 Liters Included</li>
                     <li className="service-feature-item"><Check size={14} /> Petrol & Diesel</li>
                   </ul>
-                  <div className="service-meta">
-                    <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">15 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹799 + fuel</span></div>
-                  </div>
-                  <button onClick={() => handleBookService('Fuel Delivery', 799)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
+                  <button onClick={() => handleBookService('Fuel Delivery', 799)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%', marginTop: 'auto' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up">
@@ -1968,11 +1959,7 @@ export default function App() {
                     <li className="service-feature-item"><Check size={14} /> Full System Diagnostic</li>
                     <li className="service-feature-item"><Check size={14} /> Hose & Belt Fixes</li>
                   </ul>
-                  <div className="service-meta">
-                    <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">18 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹1,499</span></div>
-                  </div>
-                  <button onClick={() => handleBookService('Engine Breakdown Diagnosis', 1499)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
+                  <button onClick={() => handleBookService('Engine Breakdown Diagnosis', 1499)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%', marginTop: 'auto' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.1s' }}>
@@ -1983,11 +1970,7 @@ export default function App() {
                     <li className="service-feature-item"><Check size={14} /> First 10 km Included</li>
                     <li className="service-feature-item"><Check size={14} /> ₹35/km after 10 km</li>
                   </ul>
-                  <div className="service-meta">
-                    <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">20 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹1,999</span></div>
-                  </div>
-                  <button onClick={() => handleBookService('Car Towing', 1999)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
+                  <button onClick={() => handleBookService('Car Towing', 1999)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%', marginTop: 'auto' }}>Book Now</button>
                 </div>
 
                 <div className="service-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
@@ -1998,11 +1981,7 @@ export default function App() {
                     <li className="service-feature-item"><Check size={14} /> Damage-Free Guarantee</li>
                     <li className="service-feature-item"><Check size={14} /> Smart Key Bypass</li>
                   </ul>
-                  <div className="service-meta">
-                    <div className="service-eta"><span className="service-eta-label">ETA</span><span className="service-eta-val">12 Mins</span></div>
-                    <div className="service-price"><span className="service-price-label">Price</span><span className="service-price-val">₹899</span></div>
-                  </div>
-                  <button onClick={() => handleBookService('Lockout Assistance', 899)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%' }}>Book Now</button>
+                  <button onClick={() => handleBookService('Lockout Assistance', 899)} className="btn btn-primary" style={{ fontSize: '0.9rem', padding: '0.65rem', width: '100%', marginTop: 'auto' }}>Book Now</button>
                 </div>
               </div>
             </div>
