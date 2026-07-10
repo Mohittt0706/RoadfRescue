@@ -31,8 +31,13 @@ let isMongoConnected = false;
 
 // Async function to connect to MongoDB
 export async function connectMongo() {
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri || mongoUri === 'your_mongodb_uri_here' || mongoUri === 'mongodb://127.0.0.1:27017/roadrescue') {
+    // If it's empty or points to standard local DB, skip it for prototype dev to avoid warnings
+    console.log('MongoDB not configured or running in fallback mode. Using SQLite for Emergency Requests.');
+    return;
+  }
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/roadrescue';
     await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
     EmergencyModel = mongoose.model('Emergency', EmergencySchema);
     isMongoConnected = true;
