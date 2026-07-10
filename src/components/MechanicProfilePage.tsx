@@ -17,6 +17,7 @@ import '../profile-settings.css';
 
 interface MechanicProfilePageProps {
   onBack: () => void;
+  onLogout: () => void;
 }
 
 interface Service {
@@ -125,7 +126,7 @@ const schedule = [
   { day: 'Sunday', start: 'Off', end: 'Off', enabled: false },
 ];
 
-export default function MechanicProfilePage({ onBack }: MechanicProfilePageProps) {
+export default function MechanicProfilePage({ onBack, onLogout }: MechanicProfilePageProps) {
   const [activeSection, setActiveSection] = useState('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);

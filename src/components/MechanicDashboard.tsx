@@ -425,7 +425,7 @@ export default function MechanicDashboard({ theme, toggleTheme, onLogout }: Mech
           ) : activeTab === 'earnings' ? (
             <EarningsDashboard onBack={() => setActiveTab('home')} />
           ) : activeTab === 'profile' ? (
-            <MechanicProfilePage onBack={() => setActiveTab('home')} />
+            <MechanicProfilePage onBack={() => setActiveTab('home')} onLogout={onLogout} />
           ) : (
           <>
           {/* === Stats Row === */}

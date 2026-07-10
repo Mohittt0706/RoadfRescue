@@ -34,6 +34,8 @@ export function initDatabase() {
       name TEXT NOT NULL,
       phone TEXT NOT NULL,
       email TEXT,
+      password_hash TEXT,
+      role TEXT DEFAULT 'mechanic',
       experience_years INTEGER DEFAULT 0,
       rating REAL DEFAULT 4.5,
       total_jobs INTEGER DEFAULT 0,
@@ -167,19 +169,42 @@ export function initDatabase() {
 }
 
 function seedData(db) {
+  // Migration: add password_hash column to mechanics if missing
+  try {
+    db.exec('ALTER TABLE mechanics ADD COLUMN password_hash TEXT');
+  } catch (_) { /* column already exists */ }
+  try {
+    db.exec('ALTER TABLE mechanics ADD COLUMN role TEXT DEFAULT \'mechanic\'');
+  } catch (_) { /* column already exists */ }
+
+  // Set default password for existing mechanics that have no password_hash
+  const mechanicsWithoutPw = db.prepare('SELECT id FROM mechanics WHERE password_hash IS NULL').all();
+  if (mechanicsWithoutPw.length > 0) {
+    const defaultPw = bcrypt.hashSync('mechanic123', 12);
+    const updatePw = db.prepare('UPDATE mechanics SET password_hash = ? WHERE id = ?');
+    const updateMany = db.transaction((items) => {
+      for (const m of items) {
+        updatePw.run(defaultPw, m.id);
+      }
+    });
+    updateMany(mechanicsWithoutPw);
+    console.log(`Set default password for ${mechanicsWithoutPw.length} existing mechanics`);
+  }
+
   const mechanicCount = db.prepare('SELECT COUNT(*) as count FROM mechanics').get();
   if (mechanicCount.count === 0) {
     const insertMechanic = db.prepare(`
-      INSERT INTO mechanics (id, name, phone, email, experience_years, rating, total_jobs, status, specialization, latitude, longitude)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO mechanics (id, name, phone, email, password_hash, role, experience_years, rating, total_jobs, status, specialization, latitude, longitude)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
+    const defaultPw = bcrypt.hashSync('mechanic123', 12);
     const mechanics = [
-      ['m1', 'Rajesh Kumar', '+91 98765 43210', 'rajesh@roadrescue.in', 12, 4.8, 342, 'available', 'Engine & Towing', 23.0225, 72.5714],
-      ['m2', 'Amit Patel', '+91 98765 43211', 'amit@roadrescue.in', 8, 4.7, 218, 'available', 'Battery & Electrical', 23.0300, 72.5600],
-      ['m3', 'Suresh Yadav', '+91 98765 43212', 'suresh@roadrescue.in', 15, 4.9, 456, 'available', 'Tire & Suspension', 23.0150, 72.5800],
-      ['m4', 'Vikram Singh', '+91 98765 43213', 'vikram@roadrescue.in', 6, 4.5, 134, 'busy', 'Fuel & Lockout', 23.0400, 72.5500],
-      ['m5', 'Prakash Mehta', '+91 98765 43214', 'prakash@roadrescue.in', 10, 4.6, 289, 'available', 'General Repair', 23.0100, 72.5900],
+      ['m1', 'Rajesh Kumar', '+91 98765 43210', 'rajesh@roadrescue.in', defaultPw, 'mechanic', 12, 4.8, 342, 'available', 'Engine & Towing', 23.0225, 72.5714],
+      ['m2', 'Amit Patel', '+91 98765 43211', 'amit@roadrescue.in', defaultPw, 'mechanic', 8, 4.7, 218, 'available', 'Battery & Electrical', 23.0300, 72.5600],
+      ['m3', 'Suresh Yadav', '+91 98765 43212', 'suresh@roadrescue.in', defaultPw, 'mechanic', 15, 4.9, 456, 'available', 'Tire & Suspension', 23.0150, 72.5800],
+      ['m4', 'Vikram Singh', '+91 98765 43213', 'vikram@roadrescue.in', defaultPw, 'mechanic', 6, 4.5, 134, 'busy', 'Fuel & Lockout', 23.0400, 72.5500],
+      ['m5', 'Prakash Mehta', '+91 98765 43214', 'prakash@roadrescue.in', defaultPw, 'mechanic', 10, 4.6, 289, 'available', 'General Repair', 23.0100, 72.5900],
     ];
 
     const insertMany = db.transaction((items) => {

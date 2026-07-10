@@ -52,9 +52,9 @@ import AdminDashboard from './components/AdminDashboard';
 import MyBookings from './components/MyBookings';
 import EmergencyBookingModal from './components/EmergencyBookingModal';
 import EmergencyTracking from './components/EmergencyTracking';
-import MechanicLoginPage from './components/MechanicLoginPage';
 import MechanicDashboard from './components/MechanicDashboard';
 import { auth, setAuthToken, getAuthToken, isTokenExpired } from './api';
+import Silk from './components/Silk';
 
 // Types for Chatbot
 interface Message {
@@ -77,13 +77,12 @@ interface ConfettiItem {
 
 export default function App() {
   /* --- Routing State --- */
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'mechanicProfile' | 'checkout' | 'admin' | 'myBookings' | 'emergencyTrack' | 'mechanicLogin' | 'mechanicDashboard' | 'adminLogin'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'mechanicProfile' | 'checkout' | 'admin' | 'myBookings' | 'emergencyTrack' | 'mechanicDashboard'>('landing');
   const [checkoutData, setCheckoutData] = useState<any>(null);
 
   /* --- Authentication State --- */
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [authSubmitting, setAuthSubmitting] = useState(false);
-  const [adminLoginError, setAdminLoginError] = useState('');
+
 
   /* --- Booking Modal State --- */
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -325,8 +324,7 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginRemember, setLoginRemember] = useState(false);
-  const [loginMode, setLoginMode] = useState<'password' | 'otp' | 'magic'>('password');
-  const [otpCode, setOtpCode] = useState('');
+  const [selectedLoginRole, setSelectedLoginRole] = useState<'user' | 'mechanic' | 'admin'>('user');
 
   const [signupName, setSignupName] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -345,8 +343,6 @@ export default function App() {
   const [authSuccess, setAuthSuccess] = useState<'login' | 'signup' | null>(null);
   const [shakeCard, setShakeCard] = useState(false);
 
-  const [showBiometricsModal, setShowBiometricsModal] = useState(false);
-  const [biometricsScanning, setBiometricsScanning] = useState(false);
   const [confetti, setConfetti] = useState<ConfettiItem[]>([]);
 
   const formatPhoneNumber = (value: string) => {
@@ -404,7 +400,7 @@ export default function App() {
     setLoginErrors({});
     let errors: { email?: string; password?: string } = {};
     if (!loginEmail.trim()) errors.email = "Email or mobile number is required.";
-    if (loginMode === 'password' && !loginPassword) errors.password = "Password is required.";
+    if (!loginPassword) errors.password = "Password is required.";
 
     if (Object.keys(errors).length > 0) {
       setLoginErrors(errors);
@@ -415,14 +411,31 @@ export default function App() {
 
     setAuthLoading(true);
     try {
-      const result = await auth.login(loginEmail, loginPassword);
-      setAuthToken(result.token);
-      setCurrentUser(result.user);
+      let result: any;
+      let targetView: string;
+
+      if (selectedLoginRole === 'admin') {
+        result = await auth.adminLogin(loginEmail, loginPassword);
+        setAuthToken(result.token);
+        setCurrentUser({ ...result.admin, role: 'admin' });
+        targetView = 'admin';
+      } else if (selectedLoginRole === 'mechanic') {
+        result = await auth.mechanicLogin(loginEmail, loginPassword);
+        setAuthToken(result.token);
+        setCurrentUser({ ...result.mechanic, role: 'mechanic' });
+        targetView = 'mechanicDashboard';
+      } else {
+        result = await auth.login(loginEmail, loginPassword);
+        setAuthToken(result.token);
+        setCurrentUser(result.user);
+        targetView = 'dashboard';
+      }
+
       setAuthLoading(false);
       setAuthSuccess('login');
       setTimeout(() => {
         setAuthSuccess(null);
-        setCurrentView('dashboard');
+        setCurrentView(targetView as any);
       }, 1500);
     } catch (err: any) {
       setAuthLoading(false);
@@ -481,50 +494,6 @@ export default function App() {
       setSignupErrors({ general: err.message || 'Registration failed.' });
       setShakeCard(true);
       setTimeout(() => setShakeCard(false), 400);
-    }
-  };
-
-  const startBiometricScan = () => {
-    setShowBiometricsModal(true);
-    setBiometricsScanning(true);
-    setTimeout(() => {
-      setBiometricsScanning(false);
-      setTimeout(() => {
-        setShowBiometricsModal(false);
-        setAuthSuccess('login');
-        setTimeout(() => {
-          setAuthSuccess(null);
-          setCurrentView('dashboard');
-        }, 1500);
-      }, 1000);
-    }, 2000);
-  };
-
-  /* --- Admin Login Handler --- */
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [showAdminPassword, setShowAdminPassword] = useState(false);
-  const [adminAuthLoading, setAdminAuthLoading] = useState(false);
-
-  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAdminLoginError('');
-
-    if (!adminEmail.trim() || !adminPassword) {
-      setAdminLoginError('Email and password are required.');
-      return;
-    }
-
-    setAdminAuthLoading(true);
-    try {
-      const result = await auth.adminLogin(adminEmail, adminPassword);
-      setAuthToken(result.token);
-      setCurrentUser({ ...result.admin, role: 'admin' });
-      setAdminAuthLoading(false);
-      setCurrentView('admin');
-    } catch (err: any) {
-      setAdminAuthLoading(false);
-      setAdminLoginError(err.message || 'Invalid credentials. Access denied.');
     }
   };
 
@@ -1202,8 +1171,8 @@ export default function App() {
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
                   You don't have admin privileges. Please sign in with an admin account.
                 </p>
-                <button onClick={() => setCurrentView('adminLogin')} className="btn btn-primary" style={{ width: '100%' }}>
-                  Go to Admin Login
+                <button onClick={() => setCurrentView('login')} className="btn btn-primary" style={{ width: '100%' }}>
+                  Go to Login
                 </button>
                 <button onClick={() => setCurrentView('landing')} className="btn btn-secondary" style={{ width: '100%', marginTop: '0.5rem' }}>
                   Back to Home
@@ -1212,129 +1181,6 @@ export default function App() {
             </div>
           </div>
         )
-      ) : currentView === 'adminLogin' ? (
-        /* ==========================================
-           ADMIN LOGIN PAGE (Separate from User Login)
-           ========================================== */
-        <div className="auth-page">
-          <div className="auth-brand-side">
-            <div className="auth-brand-glow-blob"></div>
-            <div className="auth-brand-logo" onClick={() => setCurrentView('landing')}>
-              <span className="navbar-logo-icon" style={{ fontSize: '1.75rem' }}>🚨</span>
-              <span>RoadRescue AI</span>
-            </div>
-            <div className="auth-brand-showcase animate-slide-up">
-              <div className="auth-brand-text">
-                <h2 className="auth-brand-headline" style={{ textAlign: 'left' }}>
-                  Admin Control Center.<br />
-                  <span className="gradient-text-accent" style={{ background: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                    Secure Access Portal.
-                  </span>
-                </h2>
-                <p className="auth-brand-desc">
-                  Manage bookings, mechanics, payments, analytics, and system settings from the admin dashboard.
-                </p>
-              </div>
-              <div className="auth-trust-badges-grid">
-                <div className="auth-trust-item"><Shield size={14} /> Admin Only</div>
-                <div className="auth-trust-item"><Lock size={14} /> Encrypted</div>
-                <div className="auth-trust-item"><Check size={14} /> Role Verified</div>
-              </div>
-            </div>
-          </div>
-          <div className="auth-form-side">
-            <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', zIndex: 50 }}>
-              <button onClick={toggleTheme} className="theme-toggle-btn" title="Toggle Theme">
-                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-              </button>
-            </div>
-            <div className="auth-card-entrance glass-card" style={{ width: '100%' }}>
-              <div className="auth-form-header">
-                <h2 className="auth-form-title" style={{ textAlign: 'left' }}>Admin Sign In</h2>
-                <p className="auth-form-subtitle">
-                  <span className="auth-form-switch-link" onClick={() => setCurrentView('login')}>
-                    ← Back to User Login
-                  </span>
-                </p>
-              </div>
-
-              {adminLoginError && (
-                <div style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '8px',
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                  color: 'var(--accent)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  marginBottom: '1rem'
-                }}>
-                  <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: '0.35rem' }} />
-                  {adminLoginError}
-                </div>
-              )}
-
-              <form onSubmit={handleAdminLoginSubmit}>
-                <div className={`auth-input-group ${focusedField === 'adminEmail' ? 'focused' : ''} ${adminEmail ? 'has-value' : ''}`}>
-                  <input 
-                    type="email" 
-                    id="adminEmail"
-                    className="auth-input-field"
-                    value={adminEmail}
-                    onChange={(e) => setAdminEmail(e.target.value)}
-                    onFocus={() => setFocusedField('adminEmail')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                  <Mail className="auth-input-icon" size={18} />
-                  <label htmlFor="adminEmail" className="auth-input-label">Admin Email</label>
-                </div>
-
-                <div className={`auth-input-group ${focusedField === 'adminPassword' ? 'focused' : ''} ${adminPassword ? 'has-value' : ''}`}>
-                  <input 
-                    type={showAdminPassword ? 'text' : 'password'} 
-                    id="adminPassword"
-                    className="auth-input-field"
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    onFocus={() => setFocusedField('adminPassword')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                  <Lock className="auth-input-icon" size={18} />
-                  <label htmlFor="adminPassword" className="auth-input-label">Password</label>
-                  <button 
-                    type="button" 
-                    className="auth-pw-toggle" 
-                    onClick={() => setShowAdminPassword(!showAdminPassword)}
-                  >
-                    {showAdminPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-
-                <button 
-                  type="submit" 
-                  className="btn btn-primary"
-                  disabled={adminAuthLoading}
-                  style={{ width: '100%', padding: '1rem', marginTop: '0.5rem' }}
-                >
-                  {adminAuthLoading ? (
-                    <span className="chatbot-typing" style={{ background: 'transparent', border: 'none', padding: 0 }}>
-                      <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
-                      <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
-                      <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
-                    </span>
-                  ) : (
-                    <><Shield size={16} /> Sign In as Admin</>
-                  )}
-                </button>
-              </form>
-
-              <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                <p>Default admin: <strong>admin@roadrescue.in</strong></p>
-                <p>Password: <strong>admin123</strong></p>
-              </div>
-            </div>
-          </div>
-        </div>
       ) : currentView === 'mechanicDashboard' ? (
         /* ==========================================
            MECHANIC DASHBOARD (PREMIUM)
@@ -1343,16 +1189,6 @@ export default function App() {
           theme={theme}
           toggleTheme={toggleTheme}
           onLogout={handleLogout}
-        />
-      ) : currentView === 'mechanicLogin' ? (
-        /* ==========================================
-           MECHANIC LOGIN PAGE (PREMIUM)
-           ========================================== */
-        <MechanicLoginPage
-          theme={theme}
-          toggleTheme={toggleTheme}
-          onBack={handleLogout}
-          onLoginSuccess={() => setCurrentView('mechanicDashboard')}
         />
       ) : currentView !== 'landing' ? (
         /* ==========================================
@@ -1379,6 +1215,9 @@ export default function App() {
 
           {/* Left Panel: Brand Showcase */}
           <div className="auth-brand-side">
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, opacity: 0.6, pointerEvents: 'none' }}>
+              <Silk speed={3} scale={1.2} color="#2563EB" noiseIntensity={0.8} />
+            </div>
             <div className="auth-brand-glow-blob"></div>
             
             <div className="auth-brand-logo" onClick={() => setCurrentView('landing')}>
@@ -1503,12 +1342,9 @@ export default function App() {
               )}
 
               {currentView === 'login' ? (
-                /* ==========================================
-                   LOGIN VIEW FORM
-                   ========================================== */
                 <form onSubmit={handleLoginSubmit}>
                   <div className="auth-form-header">
-                    <h2 className="auth-form-title" style={{ textAlign: 'left' }}>Secure Sign In</h2>
+                    <h2 className="auth-form-title" style={{ textAlign: 'left' }}>Sign In</h2>
                     <p className="auth-form-subtitle">
                       Don't have an account?{' '}
                       <span className="auth-form-switch-link" onClick={() => { setCurrentView('signup'); setLoginErrors({}); }}>
@@ -1517,77 +1353,34 @@ export default function App() {
                     </p>
                   </div>
 
-                  {/* Social Buttons */}
-                  <div className="auth-social-buttons">
-                    <button type="button" className="auth-social-btn" onClick={() => alert("Google Auth integration placeholder")}>
-                      <span>🌐 Google</span>
-                    </button>
-                    <button type="button" className="auth-social-btn" onClick={() => alert("Apple ID integration placeholder")}>
-                      <span>🍏 Apple</span>
-                    </button>
-                    <button type="button" className="auth-social-btn" onClick={() => alert("GitHub OAuth integration placeholder")}>
-                      <span>🐙 GitHub</span>
-                    </button>
+                  {/* Role Selector */}
+                  <div style={{
+                    display: 'flex', gap: '0.5rem', marginBottom: '1.5rem',
+                    background: 'var(--light-surface)', padding: '4px', borderRadius: 'var(--radius-sm)'
+                  }}>
+                    {(['user', 'mechanic', 'admin'] as const).map(role => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setSelectedLoginRole(role)}
+                        className="btn"
+                        style={{
+                          flexGrow: 1, fontSize: '0.8rem', padding: '0.5rem 0.3rem',
+                          borderRadius: '6px', fontWeight: 700,
+                          background: selectedLoginRole === role ? 'var(--light-bg)' : 'transparent',
+                          color: selectedLoginRole === role ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          boxShadow: selectedLoginRole === role ? 'var(--shadow-sm)' : 'none'
+                        }}
+                      >
+                        {role === 'user' ? '👤 User' : role === 'mechanic' ? '🔧 Mechanic' : '🛡 Admin'}
+                      </button>
+                    ))}
                   </div>
 
-                  <div className="auth-divider">OR</div>
-
-                  {/* Login Modes Switcher */}
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'var(--light-surface)', padding: '4px', borderRadius: 'var(--radius-sm)' }}>
-                    <button 
-                      type="button" 
-                      onClick={() => setLoginMode('password')}
-                      className="btn" 
-                      style={{ 
-                        flexGrow: 1, 
-                        fontSize: '0.85rem', 
-                        padding: '0.4rem', 
-                        borderRadius: '6px',
-                        background: loginMode === 'password' ? 'var(--light-bg)' : 'transparent',
-                        color: loginMode === 'password' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        boxShadow: loginMode === 'password' ? 'var(--shadow-sm)' : 'none'
-                      }}
-                    >
-                      Password
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => setLoginMode('otp')}
-                      className="btn" 
-                      style={{ 
-                        flexGrow: 1, 
-                        fontSize: '0.85rem', 
-                        padding: '0.4rem', 
-                        borderRadius: '6px',
-                        background: loginMode === 'otp' ? 'var(--light-bg)' : 'transparent',
-                        color: loginMode === 'otp' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        boxShadow: loginMode === 'otp' ? 'var(--shadow-sm)' : 'none'
-                      }}
-                    >
-                      OTP Code
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => setLoginMode('magic')}
-                      className="btn" 
-                      style={{ 
-                        flexGrow: 1, 
-                        fontSize: '0.85rem', 
-                        padding: '0.4rem', 
-                        borderRadius: '6px',
-                        background: loginMode === 'magic' ? 'var(--light-bg)' : 'transparent',
-                        color: loginMode === 'magic' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        boxShadow: loginMode === 'magic' ? 'var(--shadow-sm)' : 'none'
-                      }}
-                    >
-                      Magic Link
-                    </button>
-                  </div>
-
-                  {/* Email/Mobile Input */}
+                  {/* Email Input */}
                   <div className={`auth-input-group ${focusedField === 'loginEmail' ? 'focused' : ''} ${loginEmail ? 'has-value' : ''}`}>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       id="loginEmail"
                       className="auth-input-field"
                       value={loginEmail}
@@ -1596,64 +1389,36 @@ export default function App() {
                       onBlur={() => setFocusedField(null)}
                     />
                     <Mail className="auth-input-icon" size={18} />
-                    <label htmlFor="loginEmail" className="auth-input-label">Email or Mobile Number</label>
+                    <label htmlFor="loginEmail" className="auth-input-label">Email</label>
                     {loginErrors.email && (
                       <span style={{ fontSize: '0.75rem', color: 'var(--accent)', marginTop: '4px', fontWeight: 600 }}>{loginErrors.email}</span>
                     )}
                   </div>
 
-                  {/* Password Input (Traditional Mode) */}
-                  {loginMode === 'password' && (
-                    <div className={`auth-input-group ${focusedField === 'loginPassword' ? 'focused' : ''} ${loginPassword ? 'has-value' : ''}`}>
-                      <input 
-                        type={showLoginPassword ? 'text' : 'password'} 
-                        id="loginPassword"
-                        className="auth-input-field"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        onFocus={() => setFocusedField('loginPassword')}
-                        onBlur={() => setFocusedField(null)}
-                      />
-                      <Lock className="auth-input-icon" size={18} />
-                      <label htmlFor="loginPassword" className="auth-input-label">Password</label>
-                      <button 
-                        type="button" 
-                        className="auth-pw-toggle" 
-                        onClick={() => setShowLoginPassword(!showLoginPassword)}
-                      >
-                        {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                      {loginErrors.password && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--accent)', marginTop: '4px', fontWeight: 600 }}>{loginErrors.password}</span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* OTP Code Fields (OTP Mode) */}
-                  {loginMode === 'otp' && (
-                    <div className={`auth-input-group ${focusedField === 'otpCode' ? 'focused' : ''} ${otpCode ? 'has-value' : ''}`}>
-                      <input 
-                        type="text" 
-                        id="otpCode"
-                        maxLength={6}
-                        placeholder="Enter 6-digit code"
-                        className="auth-input-field"
-                        value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                        onFocus={() => setFocusedField('otpCode')}
-                        onBlur={() => setFocusedField(null)}
-                        style={{ letterSpacing: '0.3em', textAlign: 'center', paddingLeft: '1rem' }}
-                      />
-                      <label htmlFor="otpCode" className="auth-input-label" style={{ left: '1rem' }}>One-Time Password Code</label>
-                    </div>
-                  )}
-
-                  {/* Magic Link helper text */}
-                  {loginMode === 'magic' && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', borderLeft: '3px solid var(--primary)', paddingLeft: '0.5rem' }}>
-                      ⚡ We will send a secure sign-in token to your registered email above. Click it to log in instantly.
-                    </p>
-                  )}
+                  {/* Password Input */}
+                  <div className={`auth-input-group ${focusedField === 'loginPassword' ? 'focused' : ''} ${loginPassword ? 'has-value' : ''}`}>
+                    <input
+                      type={showLoginPassword ? 'text' : 'password'}
+                      id="loginPassword"
+                      className="auth-input-field"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      onFocus={() => setFocusedField('loginPassword')}
+                      onBlur={() => setFocusedField(null)}
+                    />
+                    <Lock className="auth-input-icon" size={18} />
+                    <label htmlFor="loginPassword" className="auth-input-label">Password</label>
+                    <button
+                      type="button"
+                      className="auth-pw-toggle"
+                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                    >
+                      {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                    {loginErrors.password && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent)', marginTop: '4px', fontWeight: 600 }}>{loginErrors.password}</span>
+                    )}
+                  </div>
 
                   {loginErrors.general && (
                     <div style={{
@@ -1674,32 +1439,20 @@ export default function App() {
                   {/* Login Form Aux Controls */}
                   <div className="auth-form-actions">
                     <label className="auth-checkbox-label">
-                      <input 
-                        type="checkbox" 
-                        checked={loginRemember} 
-                        onChange={(e) => setLoginRemember(e.target.checked)} 
+                      <input
+                        type="checkbox"
+                        checked={loginRemember}
+                        onChange={(e) => setLoginRemember(e.target.checked)}
                         style={{ cursor: 'pointer' }}
                       />
-                      <span>Remember Device</span>
+                      <span>Remember Me</span>
                     </label>
                     <a href="#forgot" className="auth-forgot-link" onClick={() => alert("Password reset workflow placeholder")}>Forgot Password?</a>
                   </div>
 
-                  {/* Biometric trigger helper */}
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-                    <button 
-                      type="button" 
-                      onClick={startBiometricScan}
-                      className="btn btn-secondary" 
-                      style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', width: '100%', gap: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <span>👤</span> Scan Face ID / Fingerprint
-                    </button>
-                  </div>
-
                   {/* Primary Submit Button */}
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     className="btn btn-primary"
                     disabled={authLoading}
                     style={{ width: '100%', padding: '1rem' }}
@@ -1711,9 +1464,21 @@ export default function App() {
                         <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
                       </span>
                     ) : (
-                      <>🚗 {loginMode === 'magic' ? 'Send Magic Link' : loginMode === 'otp' ? 'Verify Code' : 'Login Securely'}</>
+                      <>🚗 {selectedLoginRole === 'admin' ? 'Sign In as Admin' : selectedLoginRole === 'mechanic' ? 'Sign In as Mechanic' : 'Login Securely'}</>
                     )}
                   </button>
+
+                  {/* Default credentials hint for admin */}
+                  {selectedLoginRole === 'admin' && (
+                    <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <p>Default: <strong>admin@roadrescue.in</strong> / <strong>admin123</strong></p>
+                    </div>
+                  )}
+                  {selectedLoginRole === 'mechanic' && (
+                    <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <p>Default: <strong>rajesh@roadrescue.in</strong> / <strong>mechanic123</strong></p>
+                    </div>
+                  )}
                 </form>
               ) : (
                 /* ==========================================
@@ -1926,46 +1691,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Biometrics Scan Simulator Modal */}
-          {showBiometricsModal && (
-            <div style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              background: 'rgba(15,23,42,0.8)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 99999
-            }}>
-              <div className="glass-card" style={{ width: '320px', textAlign: 'center', padding: '2.5rem 2rem', background: 'var(--light-bg)', color: 'var(--text-primary)' }}>
-                <div style={{ 
-                  fontSize: '3rem', 
-                  marginBottom: '1rem', 
-                  animation: biometricsScanning ? 'pulse-emergency 1.5s infinite' : 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '80px',
-                  height: '80px',
-                  borderRadius: '50%',
-                  background: 'rgba(37,99,235,0.06)'
-                }}>
-                  {biometricsScanning ? '🧬' : '🟢'}
-                </div>
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Biometric Verification</h3>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  {biometricsScanning 
-                    ? 'Scanning Face ID / Fingerprint sensor...' 
-                    : 'Security Match Verified! Logged in.'}
-                </p>
-              </div>
-            </div>
-          )}
-
         </div>
       ) : (
         /* ==========================================
@@ -2016,12 +1741,6 @@ export default function App() {
                   Login
                 </button>
                 <button
-                  onClick={() => setCurrentView('mechanicLogin')}
-                  className="navbar-login-btn"
-                >
-                  Mechanic Login
-                </button>
-                <button
                   onClick={() => setCurrentView('signup')}
                   className="btn btn-secondary"
                 >
@@ -2063,7 +1782,6 @@ export default function App() {
                 <hr className="mobile-divider" />
                 <div className="mobile-actions">
                   <button onClick={() => { setCurrentView('login'); setMobileMenuOpen(false); }} className="btn btn-secondary">Login</button>
-                  <button onClick={() => { setCurrentView('mechanicLogin'); setMobileMenuOpen(false); }} className="btn btn-secondary">Mechanic Login</button>
                   <button onClick={() => { setCurrentView('signup'); setMobileMenuOpen(false); }} className="btn btn-secondary">Sign Up</button>
                   <a href="#emergency" className="btn btn-emergency">🚨 Emergency SOS</a>
                 </div>
@@ -2105,12 +1823,6 @@ export default function App() {
                     className="btn btn-secondary cursor-pointer"
                   >
                     <Play size={18} fill="currentColor" /> Try AI Diagnosis
-                  </button>
-                  <button
-                    onClick={() => setCurrentView('mechanicLogin')}
-                    className="btn-text cursor-pointer"
-                  >
-                    Mechanic Login →
                   </button>
                 </div>
 

@@ -88,6 +88,56 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// POST /api/auth/mechanic/login - Mechanic login
+router.post('/mechanic/login', async (req, res) => {
+  const { db } = req;
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    const mechanic = db.prepare('SELECT * FROM mechanics WHERE email = ?').get(email);
+    if (!mechanic) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    if (!mechanic.password_hash) {
+      return res.status(401).json({ error: 'No password set for this account. Contact admin.' });
+    }
+
+    const validPassword = await bcrypt.compare(password, mechanic.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const token = jwt.sign(
+      { id: mechanic.id, email: mechanic.email, role: 'mechanic' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      mechanic: {
+        id: mechanic.id,
+        name: mechanic.name,
+        email: mechanic.email,
+        phone: mechanic.phone,
+        role: 'mechanic',
+        specialization: mechanic.specialization,
+        status: mechanic.status,
+        rating: mechanic.rating
+      }
+    });
+  } catch (err) {
+    console.error('Mechanic login error:', err);
+    res.status(500).json({ error: 'Login failed.' });
+  }
+});
+
 // POST /api/auth/admin/login - Admin login
 router.post('/admin/login', async (req, res) => {
   const { db } = req;
@@ -160,6 +210,10 @@ router.get('/me', async (req, res) => {
       const admin = db.prepare('SELECT id, name, email, role FROM admins WHERE id = ?').get(decoded.id);
       if (!admin) return res.status(401).json({ error: 'Admin not found' });
       return res.json({ ...admin, role: 'admin' });
+    } else if (decoded.role === 'mechanic') {
+      const mechanic = db.prepare('SELECT id, name, email, phone, specialization, status, rating, role FROM mechanics WHERE id = ?').get(decoded.id);
+      if (!mechanic) return res.status(401).json({ error: 'Mechanic not found' });
+      return res.json({ ...mechanic, role: 'mechanic' });
     } else {
       const user = db.prepare('SELECT id, name, email, phone, vehicle_type, vehicle_number, role FROM users WHERE id = ?').get(decoded.id);
       if (!user) return res.status(401).json({ error: 'User not found' });

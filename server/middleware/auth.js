@@ -31,6 +31,16 @@ export function verifyAdmin(req, res, next) {
   });
 }
 
+// Middleware: Verify token AND require mechanic role
+export function verifyMechanic(req, res, next) {
+  verifyToken(req, res, () => {
+    if (req.user.role !== 'mechanic') {
+      return res.status(403).json({ error: 'Access denied. Mechanic privileges required.' });
+    }
+    next();
+  });
+}
+
 // Middleware: Verify token AND require user role
 export function verifyUser(req, res, next) {
   verifyToken(req, res, () => {

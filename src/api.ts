@@ -69,6 +69,9 @@ export const auth = {
   login: (email: string, password: string) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
 
+  mechanicLogin: (email: string, password: string) =>
+    request('/auth/mechanic/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
   adminLogin: (email: string, password: string) =>
     request('/auth/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
 
