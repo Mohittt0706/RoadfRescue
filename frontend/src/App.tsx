@@ -55,7 +55,7 @@ import EmergencyTracking from './components/EmergencyTracking';
 import MechanicDashboard from './components/MechanicDashboard';
 import Silk from './components/Silk';
 import { authService } from './services/authService';
-import { BookingStore, NotificationStore, EmergencyStore } from './services/store';
+import { BookingStore, NotificationStore, EmergencyStore, socket, syncAllStores } from './services/store';
 
 // Types for Chatbot
 interface Message {
@@ -116,6 +116,8 @@ export default function App() {
     const user = authService.getCurrentUser();
     if (user) {
       setCurrentUser(user);
+      socket.connect();
+      syncAllStores();
       // Auto redirect to their matching dashboard if they reload and are logged in
       if (user.role === 'admin') {
         setCurrentView('admin');
@@ -458,6 +460,8 @@ export default function App() {
       }
 
       setCurrentUser(user);
+      socket.connect();
+      syncAllStores();
       setAuthLoading(false);
       setAuthSuccess('login');
       setTimeout(() => {
@@ -509,6 +513,8 @@ export default function App() {
         emergencyContact: signupEmergencyContact
       });
       setCurrentUser(user);
+      socket.connect();
+      syncAllStores();
       setAuthLoading(false);
       setAuthSuccess('signup');
       triggerConfetti();
@@ -527,6 +533,7 @@ export default function App() {
   /* --- Unified Logout Handler --- */
   const handleLogout = () => {
     authService.logout();
+    socket.disconnect();
     setCurrentUser(null);
     setCurrentView('landing');
   };
