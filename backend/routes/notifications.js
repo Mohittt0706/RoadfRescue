@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { verifyToken } from '../authentication/middleware.js';
+import { validate, createNotificationValidator, idParamValidator } from '../authentication/validators.js';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/', verifyToken, (req, res) => {
 });
 
 // POST /api/notifications - Create notification (Protected)
-router.post('/', verifyToken, (req, res) => {
+router.post('/', verifyToken, createNotificationValidator, validate, (req, res) => {
   const { db, io } = req;
   const { type, title, message, bookingId, targetRole, targetId } = req.body;
 
@@ -75,7 +76,7 @@ router.put('/read-all', verifyToken, (req, res) => {
 });
 
 // PUT /api/notifications/:id/read - Mark specific notification as read (Protected)
-router.put('/:id/read', verifyToken, (req, res) => {
+router.put('/:id/read', verifyToken, idParamValidator, validate, (req, res) => {
   const { db } = req;
   const { id: tokenUserId, role } = req.user;
   const notiId = req.params.id;

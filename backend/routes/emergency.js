@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { EmergencyDb } from '../emergencyDb.js';
 import { verifyAdmin, verifyToken } from '../authentication/middleware.js';
+import { validate, createEmergencyValidator, emergencyAssignValidator, emergencyStatusValidator, emergencyPriceValidator, emergencyEtaValidator, emergencyPaymentValidator, idParamValidator } from '../authentication/validators.js';
 import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
 
 const router = Router();
@@ -86,7 +87,7 @@ async function checkDuplicate(phone, emergencyType, latitude, longitude, db) {
 }
 
 // POST /api/emergency - Create an emergency request (Public/User access allowed)
-router.post('/', async (req, res) => {
+router.post('/', createEmergencyValidator, validate, async (req, res) => {
   const { db, io } = req;
   const {
     customer_name, phone, email, vehicle, vehicle_number,
@@ -211,7 +212,7 @@ router.get('/', verifyAdmin, async (req, res) => {
 });
 
 // GET /api/emergency/:id - Get specific emergency detail (Public/Tracking page access)
-router.get('/:id', async (req, res) => {
+router.get('/:id', idParamValidator, validate, async (req, res) => {
   const { db } = req;
   const { id } = req.params;
   try {
@@ -227,7 +228,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // PUT /api/emergency/:id - Update emergency details (Admin/Owner Allowed)
-router.put('/:id', async (req, res) => {
+router.put('/:id', idParamValidator, validate, async (req, res) => {
   const { db, io } = req;
   const { id } = req.params;
   
@@ -267,7 +268,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/emergency/:id - Delete emergency request (Admin Only)
-router.delete('/:id', verifyAdmin, async (req, res) => {
+router.delete('/:id', verifyAdmin, idParamValidator, validate, async (req, res) => {
   const { db, io } = req;
   const { id } = req.params;
   try {
@@ -295,7 +296,7 @@ router.delete('/:id', verifyAdmin, async (req, res) => {
 });
 
 // POST /api/emergency/assign - Assign mechanic to emergency (Admin Only)
-router.post('/assign', verifyAdmin, async (req, res) => {
+router.post('/assign', verifyAdmin, emergencyAssignValidator, validate, async (req, res) => {
   const { db, io } = req;
   const { id, mechanic_name, eta, price } = req.body;
 
@@ -349,7 +350,7 @@ router.post('/assign', verifyAdmin, async (req, res) => {
 });
 
 // POST /api/emergency/status - Update emergency status (Admin/Mechanic access)
-router.post('/status', verifyToken, async (req, res) => {
+router.post('/status', verifyToken, emergencyStatusValidator, validate, async (req, res) => {
   const { db, io } = req;
   const { id, status } = req.body;
   const { role } = req.user;
@@ -406,7 +407,7 @@ router.post('/status', verifyToken, async (req, res) => {
 });
 
 // POST /api/emergency/price - Update emergency price (Admin Only)
-router.post('/price', verifyAdmin, async (req, res) => {
+router.post('/price', verifyAdmin, emergencyPriceValidator, validate, async (req, res) => {
   const { db, io } = req;
   const { id, price } = req.body;
 
@@ -435,7 +436,7 @@ router.post('/price', verifyAdmin, async (req, res) => {
 });
 
 // POST /api/emergency/eta - Update emergency ETA (Admin Only)
-router.post('/eta', verifyAdmin, async (req, res) => {
+router.post('/eta', verifyAdmin, emergencyEtaValidator, validate, async (req, res) => {
   const { db, io } = req;
   const { id, eta, eta_minutes } = req.body;
 
@@ -470,7 +471,7 @@ router.post('/eta', verifyAdmin, async (req, res) => {
 });
 
 // POST /api/emergency/payment - Update payment status (Admin Only)
-router.post('/payment', verifyAdmin, async (req, res) => {
+router.post('/payment', verifyAdmin, emergencyPaymentValidator, validate, async (req, res) => {
   const { db, io } = req;
   const { id, payment_status, payment_method } = req.body;
 
@@ -508,7 +509,7 @@ router.post('/payment', verifyAdmin, async (req, res) => {
 });
 
 // GET /api/emergency/invoice/:id - Generate invoice data (Public/User tracking)
-router.get('/invoice/:id', async (req, res) => {
+router.get('/invoice/:id', idParamValidator, validate, async (req, res) => {
   const { db } = req;
   const { id } = req.params;
   

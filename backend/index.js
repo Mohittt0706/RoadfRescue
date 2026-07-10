@@ -25,48 +25,116 @@ import exportRoutes from './routes/exportRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 
-// Middlewares
+// Middleware Imports
 import { verifyAdmin } from './authentication/middleware.js';
-import { apiLimiter } from './middleware/rateLimiter.js';
+import { apiLimiter, authLimiter, paymentLimiter, emergencyLimiter, adminLimiter } from './middleware/rateLimiter.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { sanitizeInput, blockMaliciousPayload } from './middleware/sanitize.js';
 
+// Load environment variables
 config();
 
 const app = express();
 const server = createServer(app);
+
+// ============================================================
+// STRICT CORS CONFIGURATION
+// ============================================================
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map(o => o.trim())
+  : ['http://localhost:3000'];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  maxAge: 86400 // Preflight cache: 24 hours
+};
+
+// Socket.IO with restricted CORS
 const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'] }
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST']
+  }
 });
 
-// Security & Formatting Middlewares
-app.use(helmet({
-  crossOriginResourcePolicy: false // Allows loading uploaded profile images in browser
-}));
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// ============================================================
+// SECURITY & PARSING MIDDLEWARE
+// ============================================================
 
-// Apply rate limiting to all standard API routes
+// Helmet security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false // Disable for development flexibility
+}));
+
+// CORS
+app.use(cors(corsOptions));
+
+// Body parsing
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Input sanitization - trim strings and escape XSS
+app.use(sanitizeInput);
+
+// Block malicious payloads (SQL injection, XSS, NoSQL injection, path traversal)
+app.use(blockMaliciousPayload);
+
+// ============================================================
+// RATE LIMITING
+// ============================================================
+
+// Specific rate limiters for sensitive routes
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/payments', paymentLimiter);
+app.use('/api/emergency', emergencyLimiter);
+app.use('/api/admin', adminLimiter);
+
+// General API rate limiter for all other routes
 app.use('/api/', apiLimiter);
 
-// Serve static uploads
+// ============================================================
+// STATIC FILES
+// ============================================================
 const uploadsDir = join(process.cwd(), 'uploads');
 if (!existsSync(uploadsDir)) {
   mkdirSync(uploadsDir, { recursive: true });
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Database Initialization
+// ============================================================
+// DATABASE INITIALIZATION
+// ============================================================
 const db = initDatabase();
 
-// Attach DB and Socket.IO to request
+// Attach DB and Socket.IO to every request
 app.use((req, res, next) => {
   req.db = db;
   req.io = io;
   next();
 });
 
-// API Routing Setup
+// ============================================================
+// API ROUTING
+// ============================================================
+
+// Auth routes (rate limited individually above)
 app.use('/api/auth', authRoutes);
+
+// Core routes
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/admin', verifyAdmin, adminRoutes);
 app.use('/api/mechanics', mechanicRoutes);
@@ -75,7 +143,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/emergency', emergencyRoutes);
 
-// Admin Module Routes (Services, Emergency Types, Export, Audit, Analytics)
+// Admin Module Routes
 app.use('/api/admin/services', verifyAdmin, servicesRoutes);
 app.use('/api/admin/emergency-types', verifyAdmin, emergencyTypesRoutes);
 app.use('/api/admin/export', verifyAdmin, exportRoutes);
@@ -87,28 +155,32 @@ app.get('/status', (req, res) => {
   res.json({ success: true, message: 'RoadRescue Backend API is fully operational.' });
 });
 
-// Socket.IO Events Namespace
+// ============================================================
+// SOCKET.IO EVENTS
+// ============================================================
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('join_admin', () => {
     socket.join('admin_room');
-    console.log('Admin joined room:', socket.id);
   });
 
   socket.on('join_user', (userId) => {
-    socket.join(`user_${userId}`);
-    console.log(`User ${userId} joined room:`, socket.id);
+    if (userId && typeof userId === 'string') {
+      socket.join(`user_${userId}`);
+    }
   });
 
   socket.on('join_conversation', (conversationId) => {
-    socket.join(`conv_${conversationId}`);
-    console.log(`Client joined conversation room: conv_${conversationId}`);
+    if (conversationId && typeof conversationId === 'string') {
+      socket.join(`conv_${conversationId}`);
+    }
   });
 
   socket.on('join_emergency', (emergencyId) => {
-    socket.join(`emergency_track_${emergencyId}`);
-    console.log(`Client joined tracking room for: ${emergencyId}`);
+    if (emergencyId && typeof emergencyId === 'string') {
+      socket.join(`emergency_track_${emergencyId}`);
+    }
   });
 
   socket.on('disconnect', () => {
@@ -118,18 +190,23 @@ io.on('connection', (socket) => {
 
 app.set('io', io);
 
-// Global Error Handler Middleware
-app.use((err, req, res, next) => {
-  console.error('[Global Error]:', err.stack || err);
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'An unexpected server error occurred.',
-    error: process.env.NODE_ENV === 'production' ? {} : err.stack || err.toString()
-  });
-});
+// ============================================================
+// ERROR HANDLING
+// ============================================================
 
+// 404 handler for undefined routes
+app.use(notFoundHandler);
+
+// Centralized error handler (must be last middleware)
+app.use(errorHandler);
+
+// ============================================================
+// SERVER START
+// ============================================================
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`RoadRescue Production-Grade API running on port ${PORT}`);
-  console.log(`OpenAI API Key: ${process.env.OPENAI_API_KEY ? 'Configured' : 'Not configured (using local AI)'}`);
+  console.log(`RoadRescue API running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`CORS Origins: ${allowedOrigins.join(', ')}`);
+  console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? 'Configured' : 'Not configured'}`);
 });

@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import { body, param, validationResult } from 'express-validator';
 import { verifyToken, verifyAdmin } from '../authentication/middleware.js';
+import { validate, createPaymentValidator, idParamValidator } from '../authentication/validators.js';
 
 const router = Router();
 
 // POST /api/payments - Create payment (Protected & Verified)
-router.post('/', verifyToken, (req, res) => {
+router.post('/', verifyToken, createPaymentValidator, validate, (req, res) => {
   const { db, io } = req;
   const { bookingId, amount, method, transactionId } = req.body;
   const { id: tokenUserId, role } = req.user;
@@ -38,7 +40,7 @@ router.post('/', verifyToken, (req, res) => {
 });
 
 // GET /api/payments/booking/:bookingId - Get payment details for booking (Protected & Verified)
-router.get('/booking/:bookingId', verifyToken, (req, res) => {
+router.get('/booking/:bookingId', verifyToken, param('bookingId').trim().notEmpty().withMessage('Booking ID is required.'), validate, (req, res) => {
   const { db } = req;
   const { id: tokenUserId, role } = req.user;
   const { bookingId } = req.params;

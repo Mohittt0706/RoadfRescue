@@ -6,14 +6,15 @@ import {
   updateService,
   deleteService,
 } from '../controllers/adminController.js';
+import { validate, createServiceValidator, updateServiceValidator, idParamValidator } from '../authentication/validators.js';
 
 const router = Router();
 
 // Services CRUD
 router.get('/', getAllServices);
-router.get('/:id', getServiceById);
-router.post('/', createService);
-router.put('/:id', updateService);
-router.delete('/:id', deleteService);
+router.get('/:id', idParamValidator, validate, getServiceById);
+router.post('/', createServiceValidator, validate, createService);
+router.put('/:id', updateServiceValidator, validate, updateService);
+router.delete('/:id', idParamValidator, validate, deleteService);
 
 export default router;

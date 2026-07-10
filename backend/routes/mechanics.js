@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { verifyToken, verifyAdmin } from '../authentication/middleware.js';
+import { validate, mechanicStatusValidator, mechanicAssignValidator, idParamValidator } from '../authentication/validators.js';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get('/', verifyToken, (req, res) => {
 });
 
 // GET /api/mechanics/:id - Get specific mechanic details (Protected)
-router.get('/:id', verifyToken, (req, res) => {
+router.get('/:id', verifyToken, idParamValidator, validate, (req, res) => {
   const { db } = req;
   const { id } = req.params;
 
@@ -54,7 +55,7 @@ router.get('/:id', verifyToken, (req, res) => {
 });
 
 // PUT /api/mechanics/:id/status - Update availability status (Protected)
-router.put('/:id/status', verifyToken, (req, res) => {
+router.put('/:id/status', verifyToken, mechanicStatusValidator, validate, (req, res) => {
   const { db, io } = req;
   const { status } = req.body;
   const { id: tokenUserId, role } = req.user;
@@ -79,7 +80,7 @@ router.put('/:id/status', verifyToken, (req, res) => {
 });
 
 // POST /api/mechanics/assign - Assign mechanic to a booking (Admin Only)
-router.post('/assign', verifyAdmin, (req, res) => {
+router.post('/assign', verifyAdmin, mechanicAssignValidator, validate, (req, res) => {
   const { db, io } = req;
   const { bookingId, mechanicId } = req.body;
 

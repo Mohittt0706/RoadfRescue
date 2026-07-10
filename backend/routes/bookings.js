@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { verifyToken, verifyAdmin } from '../authentication/middleware.js';
+import { validate, createBookingValidator, updateBookingValidator, idParamValidator } from '../authentication/validators.js';
 import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
 
 const router = Router();
@@ -15,7 +16,7 @@ const SERVICE_PRICES = {
 };
 
 // POST /api/bookings - Create a booking
-router.post('/', verifyToken, (req, res) => {
+router.post('/', verifyToken, createBookingValidator, validate, (req, res) => {
   const { db, io } = req;
   const {
     customerName, phone, email, vehicleType, vehicleNumber,
@@ -102,7 +103,7 @@ router.get('/', verifyToken, (req, res) => {
 });
 
 // GET /api/bookings/:id - Get specific booking detail (Protected)
-router.get('/:id', verifyToken, (req, res) => {
+router.get('/:id', verifyToken, idParamValidator, validate, (req, res) => {
   const { db } = req;
   const { id: tokenUserId, role } = req.user;
 
@@ -134,7 +135,7 @@ router.get('/:id', verifyToken, (req, res) => {
 });
 
 // PUT /api/bookings/:id - Update booking status / assigned mechanic (Protected)
-router.put('/:id', verifyToken, (req, res) => {
+router.put('/:id', verifyToken, updateBookingValidator, validate, (req, res) => {
   const { db, io } = req;
   const { status, assigned_mechanic_id, note } = req.body;
   const bookingId = req.params.id;
@@ -223,7 +224,7 @@ router.put('/:id', verifyToken, (req, res) => {
 });
 
 // DELETE /api/bookings/:id - Delete booking (Admin Only)
-router.delete('/:id', verifyAdmin, (req, res) => {
+router.delete('/:id', verifyAdmin, idParamValidator, validate, (req, res) => {
   const { db, io } = req;
   const bookingId = req.params.id;
 

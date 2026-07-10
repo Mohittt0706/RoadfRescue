@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
 import { createUser } from '../controllers/adminController.js';
+import { validate, adminCreateUserValidator, adminUpdateUserValidator, adminUpdateMechanicValidator, idParamValidator } from '../authentication/validators.js';
 
 const router = Router();
 
@@ -124,7 +125,7 @@ router.put('/notifications/read-all', (req, res) => {
 });
 
 // PUT /api/admin/notifications/:id/read - Mark specific notification read
-router.put('/notifications/:id/read', (req, res) => {
+router.put('/notifications/:id/read', idParamValidator, validate, (req, res) => {
   const { db } = req;
   try {
     db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(req.params.id);
@@ -139,7 +140,7 @@ router.put('/notifications/:id/read', (req, res) => {
 // ----------------------------------------------------
 
 // POST /api/admin/users - Create a new user (admin-initiated)
-router.post('/users', createUser);
+router.post('/users', adminCreateUserValidator, validate, createUser);
 
 // GET /api/admin/users - Get all users
 router.get('/users', (req, res) => {
@@ -153,7 +154,7 @@ router.get('/users', (req, res) => {
 });
 
 // GET /api/admin/users/:id - Get specific user
-router.get('/users/:id', (req, res) => {
+router.get('/users/:id', idParamValidator, validate, (req, res) => {
   const { db } = req;
   try {
     const user = db.prepare('SELECT id, name, email, phone, vehicle_type, vehicle_number, status, profile_image, address, city, created_at FROM users WHERE id = ?').get(req.params.id);
@@ -167,7 +168,7 @@ router.get('/users/:id', (req, res) => {
 });
 
 // PUT /api/admin/users/:id - Update user status / details
-router.put('/users/:id', (req, res) => {
+router.put('/users/:id', adminUpdateUserValidator, validate, (req, res) => {
   const { db } = req;
   const { status, name, phone, address, city, vehicle } = req.body;
   const userId = req.params.id;
@@ -210,7 +211,7 @@ router.put('/users/:id', (req, res) => {
 });
 
 // DELETE /api/admin/users/:id - Delete user account
-router.delete('/users/:id', (req, res) => {
+router.delete('/users/:id', idParamValidator, validate, (req, res) => {
   const { db } = req;
   const userId = req.params.id;
 
@@ -253,7 +254,7 @@ router.get('/mechanics', (req, res) => {
 });
 
 // PUT /api/admin/mechanics/:id - Approve, Reject, or Block a mechanic
-router.put('/mechanics/:id', (req, res) => {
+router.put('/mechanics/:id', adminUpdateMechanicValidator, validate, (req, res) => {
   const { db } = req;
   const { approval_status, name, phone, experience_years, specialization, status } = req.body;
   const mechanicId = req.params.id;
@@ -295,7 +296,7 @@ router.put('/mechanics/:id', (req, res) => {
 });
 
 // DELETE /api/admin/mechanics/:id - Delete a mechanic account
-router.delete('/mechanics/:id', (req, res) => {
+router.delete('/mechanics/:id', idParamValidator, validate, (req, res) => {
   const { db } = req;
   const mechanicId = req.params.id;
 

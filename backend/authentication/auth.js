@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
-import { JWT_SECRET, verifyToken, verifyUser } from './middleware.js';
+import { jwtSecret, verifyToken, verifyUser } from './middleware.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { uploadProfileImage } from '../middleware/upload.js';
 import {
@@ -18,12 +18,27 @@ import {
 } from './validators.js';
 
 const router = Router();
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'roadrescue_jwt_refresh_secret_change_in_production';
+
+// JWT secrets loaded from environment variables - no hardcoded fallbacks
+function getRefreshSecret() {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (!secret) {
+    console.error('[FATAL] JWT_REFRESH_SECRET environment variable is not set.');
+    throw new Error('JWT_REFRESH_SECRET environment variable is required');
+  }
+  return secret;
+}
+
+let _refreshSecret = null;
+function refreshSecret() {
+  if (!_refreshSecret) _refreshSecret = getRefreshSecret();
+  return _refreshSecret;
+}
 
 // Helper: Generate Access and Refresh Tokens
 function generateTokens(payload) {
-  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
-  const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' });
+  const accessToken = jwt.sign(payload, jwtSecret(), { expiresIn: process.env.JWT_EXPIRES_IN || '15m' });
+  const refreshToken = jwt.sign(payload, refreshSecret(), { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' });
   return { accessToken, refreshToken };
 }
 
@@ -267,7 +282,7 @@ router.post('/refresh', async (req, res) => {
     // 2. Verify token signature and expiration
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+      decoded = jwt.verify(refreshToken, refreshSecret());
     } catch (jwtErr) {
       // If signature is invalid or expired, delete from DB and reject
       db.prepare('DELETE FROM refresh_tokens WHERE token = ?').run(refreshToken);
