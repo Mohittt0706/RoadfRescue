@@ -35,7 +35,8 @@ import {
   Search,
   Calendar,
   LogOut,
-  BookOpen
+  BookOpen,
+  Zap
 } from 'lucide-react';
 
 import RequestAssistance from './components/RequestAssistance';
@@ -1329,22 +1330,22 @@ export default function App() {
 
                 {/* Floating elements inside Left Panel */}
                 <div className="floating-element float-gps">
-                  <MapPin size={12} color="var(--primary)" /> 📍 GPS
+                  <MapPin size={14} color="var(--primary)" /> <span>GPS Tracking</span>
                 </div>
                 <div className="floating-element float-wrench">
-                  <Wrench size={12} color="var(--primary)" /> 🔧 Wrench
+                  <Wrench size={14} color="var(--primary)" /> <span>Quick Dispatch</span>
                 </div>
                 <div className="floating-element float-sos">
-                  <ShieldAlert size={12} color="var(--accent)" /> 🚨 SOS
+                  <ShieldAlert size={14} color="var(--accent)" /> <span>SOS Emergency</span>
                 </div>
                 <div className="floating-element float-shield">
-                  <Shield size={12} color="var(--secondary)" /> 🛡 Shield
+                  <Shield size={14} color="var(--secondary)" /> <span>Verified Safety</span>
                 </div>
                 <div className="floating-element float-lightning">
-                  <span>⚡</span> AI
+                  <Zap size={14} color="#EAB308" /> <span>AI Diagnostics</span>
                 </div>
                 <div className="floating-element float-rating">
-                  <Star size={12} fill="#F59E0B" color="#F59E0B" /> 5-Star
+                  <Star size={14} fill="#F59E0B" color="#F59E0B" /> <span>5-Star Service</span>
                 </div>
               </div>
 
@@ -1431,7 +1432,7 @@ export default function App() {
                           boxShadow: selectedLoginRole === role ? 'var(--shadow-sm)' : 'none'
                         }}
                       >
-                        {role === 'user' ? '👤 User' : role === 'mechanic' ? '🔧 Mechanic' : '🛡 Admin'}
+                        {role === 'user' ? 'User' : role === 'mechanic' ? 'Mechanic' : 'Admin'}
                       </button>
                     ))}
                   </div>
@@ -1523,7 +1524,7 @@ export default function App() {
                         <span className="typing-dot" style={{ backgroundColor: 'white' }}></span>
                       </span>
                     ) : (
-                      <>🚗 {selectedLoginRole === 'admin' ? 'Sign In as Admin' : selectedLoginRole === 'mechanic' ? 'Sign In as Mechanic' : 'Login Securely'}</>
+                      <>{selectedLoginRole === 'admin' ? 'Sign In as Admin' : selectedLoginRole === 'mechanic' ? 'Sign In as Mechanic' : 'Sign In Securely'}</>
                     )}
                   </button>
 

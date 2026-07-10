@@ -826,15 +826,15 @@ a {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1.15rem;
-  border-radius: 14px;
+  padding: 0.5rem 0.9rem !important; /* Sleeker, less bulky padding */
+  border-radius: 12px;
   background: rgba(15, 23, 42, 0.45) !important; /* Glassmorphism dark background */
   backdrop-filter: blur(18px) !important; /* Blur 18px */
   -webkit-backdrop-filter: blur(18px) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important; /* Thin border */
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5) !important; /* Soft shadow */
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.78rem !important; /* Sleeker text */
   z-index: 5;
   color: #F8FAFC !important;
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -846,35 +846,35 @@ a {
   border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
-/* Natural positioning around the illustration */
+/* Natural positioning safely within the illustration container boundaries */
 .float-gps {
   top: 15%;
-  left: -2%;
+  left: 3% !important; /* Safe inner coordinate */
   animation: float-badge-gps 4s ease-in-out infinite;
 }
 
 .float-wrench {
   top: 8%;
-  right: -5%;
+  right: 3% !important; /* Safe inner coordinate */
   animation: float-badge-wrench 4.8s ease-in-out infinite;
 }
 
 .float-sos {
   bottom: 25%;
-  left: -8%;
+  left: 3% !important; /* Safe inner coordinate */
   animation: float-badge-sos 3.8s ease-in-out infinite;
   color: #EF4444 !important;
 }
 
 .float-shield {
   bottom: 12%;
-  right: -2%;
+  right: 3% !important; /* Safe inner coordinate */
   animation: float-badge-shield 5.2s ease-in-out infinite;
 }
 
 .float-lightning {
   top: 48%;
-  right: -10%;
+  right: 3% !important; /* Safe inner coordinate */
   animation: float-badge-lightning 4.2s ease-in-out infinite;
 }
 
@@ -2557,7 +2557,7 @@ a {
 
 .auth-input-field {
   width: 100%;
-  padding: 1rem 1rem 1rem 2.75rem;
+  padding: 1.45rem 1rem 0.45rem 2.75rem; /* Stripe-style inline spacing */
   border: 1.5px solid var(--border-light);
   border-radius: var(--radius-sm);
   outline: none;
@@ -2760,15 +2760,22 @@ select::-webkit-scrollbar-thumb:hover {
   transition: var(--transition-fast);
   transform-origin: left top;
   font-size: 0.95rem;
+  z-index: 2;
 }
 
 .auth-input-group.focused .auth-input-label,
 .auth-input-group.has-value .auth-input-label {
-  transform: translate(-1.75rem, -1.65rem) scale(0.8);
+  transform: translate(0, -0.55rem) scale(0.75); /* Inline floating layout */
   color: var(--primary);
-  font-weight: 700;
-  background: var(--light-bg);
-  padding: 0 5px;
+  font-weight: 600;
+  background: transparent !important;
+  padding: 0;
+}
+
+/* Explicit high-contrast override for active label in Dark Mode */
+.dark .auth-input-group.focused .auth-input-label,
+.dark .auth-input-group.has-value .auth-input-label {
+  color: #60A5FA !important; /* Premium light blue with high readability */
 }
 
 .auth-pw-toggle {
