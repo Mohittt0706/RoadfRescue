@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { verifyToken, verifyAdmin } from '../middleware/auth.js';
+import { verifyToken, verifyAdmin } from '../authentication/middleware.js';
 import { insertAuditLog, getClientIP } from '../utils/auditLogger.js';
 
 const router = Router();

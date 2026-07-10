@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
-import { JWT_SECRET, verifyToken, verifyUser } from '../middleware/auth.js';
+import { JWT_SECRET, verifyToken, verifyUser } from './middleware.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { uploadProfileImage } from '../middleware/upload.js';
 import {
@@ -15,7 +15,7 @@ import {
   changePasswordValidator,
   forgotPasswordValidator,
   resetPasswordValidator
-} from '../validators/auth.js';
+} from './validators.js';
 
 const router = Router();
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'roadrescue_jwt_refresh_secret_change_in_production';

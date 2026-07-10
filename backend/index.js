@@ -9,7 +9,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { initDatabase } from './database.js';
 
 // Route Imports
-import authRoutes from './routes/auth.js';
+import authRoutes from './authentication/auth.js';
 import bookingRoutes from './routes/bookings.js';
 import adminRoutes from './routes/admin.js';
 import mechanicRoutes from './routes/mechanics.js';
@@ -26,7 +26,7 @@ import auditRoutes from './routes/auditRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 
 // Middlewares
-import { verifyAdmin } from './middleware/auth.js';
+import { verifyAdmin } from './authentication/middleware.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 
 config();
