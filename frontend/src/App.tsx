@@ -54,7 +54,7 @@ import EmergencyBookingModal from './components/EmergencyBookingModal';
 import EmergencyTracking from './components/EmergencyTracking';
 import MechanicDashboard from './components/MechanicDashboard';
 import Silk from './components/Silk';
-import { demoAuthService } from './services/demoAuth';
+import { authService } from './services/authService';
 import { BookingStore, NotificationStore, EmergencyStore } from './services/store';
 
 // Types for Chatbot
@@ -111,9 +111,9 @@ export default function App() {
     localStorage.setItem('roadrescue-theme', theme);
   }, [theme]);
 
-  /* --- Check Existing Demo Auth Session on Mount --- */
+  /* --- Check Existing Auth Session on Mount --- */
   useEffect(() => {
-    const user = demoAuthService.getCurrentUser();
+    const user = authService.getCurrentUser();
     if (user) {
       setCurrentUser(user);
       // Auto redirect to their matching dashboard if they reload and are logged in
@@ -129,7 +129,7 @@ export default function App() {
 
   useEffect(() => {
     const updateNotificationsCount = () => {
-      const user = demoAuthService.getCurrentUser();
+      const user = authService.getCurrentUser();
       if (user) {
         const count = NotificationStore.getUnreadCount(user.role);
         setNotificationCount(count);
@@ -142,7 +142,7 @@ export default function App() {
 
   /* --- Route Protection for private dashboards --- */
   useEffect(() => {
-    const user = demoAuthService.getCurrentUser();
+    const user = authService.getCurrentUser();
     
     if (currentView === 'dashboard' && (!user || user.role !== 'user')) {
       setCurrentView('login');
@@ -442,18 +442,18 @@ export default function App() {
 
     setAuthLoading(true);
     try {
-      // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
+      // Authenticate against backend
       let user: any;
       let targetView: string;
 
       if (selectedLoginRole === 'admin') {
-        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'admin', loginRemember);
+        user = await authService.login(loginEmail, loginPassword, 'admin');
         targetView = 'admin';
       } else if (selectedLoginRole === 'mechanic') {
-        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'mechanic', loginRemember);
+        user = await authService.login(loginEmail, loginPassword, 'mechanic');
         targetView = 'mechanicDashboard';
       } else {
-        user = await demoAuthService.authenticate(loginEmail, loginPassword, 'user', loginRemember);
+        user = await authService.login(loginEmail, loginPassword, 'user');
         targetView = 'dashboard';
       }
 
@@ -466,7 +466,7 @@ export default function App() {
       }, 1000); // Redirect after 1 second
     } catch (err: any) {
       setAuthLoading(false);
-      setLoginErrors({ general: err.message || 'Incorrect demo credentials.' });
+      setLoginErrors({ general: err.message || 'Incorrect credentials.' });
       setShakeCard(true);
       setTimeout(() => setShakeCard(false), 400);
     }
@@ -498,10 +498,15 @@ export default function App() {
 
     setAuthLoading(true);
     try {
-      // TODO: Replace demo login with backend API authentication
-      const user = await demoAuthService.register({
+      // Register against backend
+      const user = await authService.register({
         name: signupName,
         email: signupEmail,
+        phone: signupPhone,
+        password: signupPassword,
+        vehicleType: signupVehicle,
+        vehicleNumber: signupCarNum,
+        emergencyContact: signupEmergencyContact
       });
       setCurrentUser(user);
       setAuthLoading(false);
@@ -521,8 +526,7 @@ export default function App() {
 
   /* --- Unified Logout Handler --- */
   const handleLogout = () => {
-    // TEMP MOCK AUTH — REMOVE WHEN BACKEND IS READY
-    demoAuthService.logout();
+    authService.logout();
     setCurrentUser(null);
     setCurrentView('landing');
   };
