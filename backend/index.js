@@ -19,6 +19,12 @@ import chatRoutes from './routes/chat.js';
 import emergencyRoutes from './routes/emergency.js';
 import workflowRoutes from './booking_workflow/routes.js';
 import { initWorkflowDatabase } from './booking_workflow/db.js';
+import paymentWorkflowRoutes from './payment_workflow/routes.js';
+import { initPaymentDatabase } from './payment_workflow/db.js';
+import notificationWorkflowRoutes from './notification_workflow/routes.js';
+import { initNotificationWorkflowDatabase } from './notification_workflow/db.js';
+import chatWorkflowRoutes from './chat_workflow/routes.js';
+import { initChatWorkflowDatabase } from './chat_workflow/db.js';
 
 // Admin Module Route Imports
 import servicesRoutes from './routes/services.js';
@@ -60,6 +66,9 @@ app.use('/uploads', express.static(uploadsDir));
 // Database Initialization
 const db = initDatabase();
 initWorkflowDatabase(db);
+initPaymentDatabase(db);
+initNotificationWorkflowDatabase(db);
+initChatWorkflowDatabase(db);
 
 // Attach DB and Socket.IO to request
 app.use((req, res, next) => {
@@ -78,6 +87,9 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api', workflowRoutes);
+app.use('/api', paymentWorkflowRoutes);
+app.use('/api', notificationWorkflowRoutes);
+app.use('/api', chatWorkflowRoutes);
 
 // Admin Module Routes (Services, Emergency Types, Export, Audit, Analytics)
 app.use('/api/admin/services', verifyAdmin, servicesRoutes);
@@ -113,6 +125,14 @@ io.on('connection', (socket) => {
   socket.on('join_emergency', (emergencyId) => {
     socket.join(`emergency_track_${emergencyId}`);
     console.log(`Client joined tracking room for: ${emergencyId}`);
+  });
+
+  socket.on('typing_started', ({ conversationId, userId }) => {
+    socket.to(`conv_${conversationId}`).to(`conversation_${conversationId}`).emit('typingStarted', { conversationId, userId });
+  });
+
+  socket.on('typing_stopped', ({ conversationId, userId }) => {
+    socket.to(`conv_${conversationId}`).to(`conversation_${conversationId}`).emit('typingStopped', { conversationId, userId });
   });
 
   socket.on('disconnect', () => {

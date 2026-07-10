@@ -19,6 +19,9 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.7.4",
     "multer": "^2.0.0-rc.4",
+    "openai": "^6.46.0",
+    "pdfkit": "^0.19.1",
+    "razorpay": "^2.9.6",
     "socket.io": "^4.8.3",
     "uuid": "^14.0.1"
   },
