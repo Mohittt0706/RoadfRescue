@@ -1,0 +1,6 @@
+◇ injected env (13) from .env // tip: ⌘ enable debugging { debug: true }
+RoadRescue API running on port 3001
+Environment: development
+CORS Origins: http://localhost:3000
+OpenAI: Configured
+Connected to MongoDB successfully for Emergency Requests.
