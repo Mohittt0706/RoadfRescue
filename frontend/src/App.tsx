@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Wrench, 
   MapPin, 
@@ -11,14 +12,11 @@ import {
   CreditCard, 
   Menu, 
   X, 
-  ChevronDown, 
   Send, 
   Upload, 
   Mic, 
-  Smartphone, 
   Check, 
   Play, 
-  ArrowRight, 
   Lock, 
   User, 
   Sparkles, 
@@ -33,14 +31,26 @@ import {
   Phone,
   Bell,
   Search,
-  Calendar,
   LogOut,
-  BookOpen,
-  Zap
+  Zap,
+  Fuel,
+  Battery,
+  ChevronRight,
+  PhoneCall,
+  MessageCircle,
+  Bot,
+  Home,
+  Radio,
+  UserCircle,
+  HelpCircle,
+  Bookmark,
+  Truck,
+  Settings,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 
-import RequestAssistance from './components/RequestAssistance';
-import LiveTracking from './components/LiveTracking';
+import SOSDispatch from './components/SOSDispatch';
 import NearbyServices from './components/NearbyServices';
 import MechanicProfile from './components/MechanicProfile';
 import AIAssistant from './components/AIAssistant';
@@ -56,7 +66,7 @@ import EmergencyTracking from './components/EmergencyTracking';
 import MechanicDashboard from './components/MechanicDashboard';
 import Silk from './components/Silk';
 import { authService } from './services/authService';
-import { BookingStore, NotificationStore, EmergencyStore, socket, syncAllStores } from './services/store';
+import { NotificationStore, socket, syncAllStores } from './services/store';
 
 // Types for Chatbot
 interface Message {
@@ -96,6 +106,13 @@ export default function App() {
 
   /* --- Dashboard Tab Switcher --- */
   const [activeDashboardTab, setActiveDashboardTab] = useState<'home' | 'dispatch' | 'chat' | 'profile' | 'nearby' | 'help' | 'notifications' | 'myBookings'>('home');
+
+  /* --- Scroll to top on tab change (fixes Home navigation bug) --- */
+  useEffect(() => {
+    const contentEl = document.querySelector('.dsb-content');
+    if (contentEl) contentEl.scrollTop = 0;
+    window.scrollTo(0, 0);
+  }, [activeDashboardTab]);
 
   /* --- Theme State --- */
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -546,6 +563,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationCount, setNotificationCount] = useState(3);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Quick select issue handler
   const handleQuickIssueSelect = (issue: string) => {
@@ -590,586 +609,430 @@ export default function App() {
         />
       </div>
       {/* ==========================================
-          DASHBOARD SCREEN VIEW
+          DASHBOARD SCREEN VIEW (SIDEBAR v3)
           ========================================== */}
       {currentView === 'dashboard' ? (
-        <div className="db-layout">
-          
-          {/* Top Sticky Header */}
-          <header className="navbar-header scrolled">
-            <div className="container navbar-container">
-              
-              <div className="navbar-logo" onClick={() => setCurrentView('landing')}>
-                <span className="navbar-logo-icon" style={{ fontSize: '1.6rem' }}>🚨</span>
-                <span style={{ color: 'var(--primary)' }}>Road</span>
-                <span>Rescue AI</span>
-                <span style={{ 
-                  background: 'var(--primary-glow)', 
-                  color: 'var(--primary)', 
-                  fontSize: '0.65rem', 
-                  padding: '2px 8px', 
-                  borderRadius: '4px',
-                  fontWeight: 800,
-                  marginLeft: '0.5rem'
-                }}>PORTAL</span>
-              </div>
+        <div className="dsb-root">
 
-              {/* Center Search bar */}
-              <div className="db-search-bar">
-                <Search size={16} className="text-muted" />
-                <input 
-                  type="text" 
-                  placeholder="Search for fuel, mechanics, centers..." 
-                  className="db-search-input"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
+          {/* ── Mobile Overlay ── */}
+          {mobileSidebarOpen && (
+            <div className="dsb-mobile-overlay" onClick={() => setMobileSidebarOpen(false)} />
+          )}
 
-              {/* Actions */}
-              <div className="navbar-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                
-                {/* SOS Button always visible */}
-                <button 
-                  onClick={() => setShowEmergencyModal(true)}
-                  className="btn btn-emergency" 
-                  style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
+          {/* ── Left Sidebar ── */}
+          <aside className={`dsb-sidebar ${sidebarCollapsed ? 'dsb-collapsed' : ''} ${mobileSidebarOpen ? 'dsb-mobile-open' : ''}`}>
+            {/* Logo */}
+            <div className="dsb-sidebar-logo">
+              <span style={{ fontSize: '1.3rem' }}>🚨</span>
+              {!sidebarCollapsed && <span className="dsb-logo-text"><span style={{ color: 'var(--primary)' }}>Road</span>Rescue</span>}
+            </div>
+
+            {/* Collapse Toggle */}
+            <button className="dsb-collapse-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? 'Expand' : 'Collapse'}>
+              {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </button>
+
+            {/* Main Nav Items */}
+            <nav className="dsb-nav">
+              {[
+                { id: 'home',        icon: <Home size={19} />,        label: 'Home' },
+                { id: 'dispatch',    icon: <Radio size={19} />,       label: 'SOS Dispatch' },
+                { id: 'chat',        icon: <Bot size={19} />,         label: 'AI Diagnosis' },
+                { id: 'nearby',      icon: <MapPin size={19} />,      label: 'Nearby Services' },
+                { id: 'myBookings',  icon: <Bookmark size={19} />,    label: 'My Bookings' },
+                { id: 'profile',     icon: <UserCircle size={19} />,  label: 'Billing & Profile' },
+                { id: 'notifications', icon: <Bell size={19} />,      label: 'Notifications' },
+                { id: 'help',        icon: <HelpCircle size={19} />,  label: 'Help & Support' },
+              ].map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => { setActiveDashboardTab(item.id as any); setMobileSidebarOpen(false); }}
+                  className={`dsb-nav-item ${activeDashboardTab === item.id ? 'dsb-active' : ''}`}
+                  title={item.label}
                 >
-                  🚨 Emergency SOS
+                  {activeDashboardTab === item.id && <span className="dsb-active-bar" />}
+                  <span className="dsb-nav-icon">{item.icon}</span>
+                  {!sidebarCollapsed && <span className="dsb-nav-label">{item.label}</span>}
+                  {!sidebarCollapsed && item.id === 'notifications' && notificationCount > 0 && (
+                    <span className="dsb-badge">{notificationCount}</span>
+                  )}
                 </button>
+              ))}
+            </nav>
 
-                {/* Notifications Bell */}
-                <div style={{ position: 'relative' }}>
-                  <button 
-                    onClick={() => { setActiveDashboardTab('notifications'); setNotificationCount(0); }}
-                    className="theme-toggle-btn"
-                    title="View Notifications"
-                  >
-                    <Bell size={20} />
-                    {notificationCount > 0 && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '4px',
-                        right: '4px',
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        background: 'var(--accent)'
-                      }}></span>
-                    )}
-                  </button>
-                  
-                  {/* Notifications Log Dropdown panel removed */}
+            {/* Divider */}
+            <div className="dsb-divider" />
+
+            {/* Bottom Items */}
+            <nav className="dsb-nav">
+              {currentUser?.role === 'admin' && (
+                <button onClick={() => { setCurrentView('admin'); setMobileSidebarOpen(false); }} className="dsb-nav-item" title="Admin Panel">
+                  <span className="dsb-nav-icon"><Settings size={19} /></span>
+                  {!sidebarCollapsed && <span className="dsb-nav-label">Admin Panel</span>}
+                </button>
+              )}
+              <button onClick={handleLogout} className="dsb-nav-item" title="Logout">
+                <span className="dsb-nav-icon"><LogOut size={19} /></span>
+                {!sidebarCollapsed && <span className="dsb-nav-label">Logout</span>}
+              </button>
+            </nav>
+
+            {/* User Card */}
+            <div className="dsb-sidebar-user">
+              <div className="dsb-user-avatar">D</div>
+              {!sidebarCollapsed && (
+                <div className="dsb-user-info">
+                  <div className="dsb-user-name">Disha</div>
+                  <div className="dsb-user-role">Gold Member</div>
                 </div>
+              )}
+            </div>
+          </aside>
 
-                {/* Theme Switcher Toggle */}
-                <button onClick={toggleTheme} className="theme-toggle-btn" title="Toggle Mode">
-                  {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+          {/* ── Main Content Area ── */}
+          <div className={`dsb-main ${sidebarCollapsed ? 'dsb-main-expanded' : ''}`}>
+
+            {/* Top Header */}
+            <header className="dsb-topbar">
+              {/* Mobile hamburger */}
+              <button className="dsb-hamburger" onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}>
+                <Menu size={20} />
+              </button>
+
+              {/* Search */}
+              <div className="dsb-search">
+                <Search size={15} />
+                <input type="text" placeholder="Search services, mechanics..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              </div>
+
+              {/* Right actions */}
+              <div className="dsb-topbar-actions">
+                <button onClick={() => setShowEmergencyModal(true)} className="dsb-sos-btn">
+                  <ShieldAlert size={14} /> Emergency SOS
                 </button>
-
-                {/* User Profile Avatar */}
-                <div style={{ position: 'relative' }}>
-                  <div 
-                    onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                    className="db-mech-avatar cursor-pointer"
-                    style={{ width: '38px', height: '38px', background: 'var(--primary)', fontSize: '0.95rem' }}
-                  >
-                    D
-                  </div>
-                  
-                  {/* Profile Menu Dropdown */}
+                <button onClick={() => { setActiveDashboardTab('notifications'); setNotificationCount(0); }} className="dsb-icon-btn" title="Notifications" style={{ position: 'relative' }}>
+                  <Bell size={18} />
+                  {notificationCount > 0 && <span className="dsb-notif-dot" />}
+                </button>
+                <button onClick={toggleTheme} className="dsb-icon-btn" title="Toggle Theme">
+                  {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                </button>
+                <div className="dsb-avatar-wrap" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>
+                  <div className="dsb-avatar">D</div>
                   {profileDropdownOpen && (
-                    <div className="db-notifications-panel" style={{ width: '200px', top: '100%', right: 0 }}>
+                    <div className="dsb-profile-dropdown">
                       <div style={{ padding: '0.25rem 0' }}>
-                        <div style={{ fontWeight: 800 }}>Disha</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>VIP Gold Member</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Disha</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Gold Member</div>
                       </div>
                       <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)', margin: '0.5rem 0' }} />
-                      <button 
-                        onClick={() => { handleLogout(); setProfileDropdownOpen(false); }}
-                        className="btn btn-secondary" 
-                        style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', justifyContent: 'flex-start', gap: '0.5rem' }}
-                      >
+                      <button onClick={() => { handleLogout(); setProfileDropdownOpen(false); }} className="dsb-dropdown-item">
                         <LogOut size={14} /> Log Out
                       </button>
                     </div>
                   )}
                 </div>
-
               </div>
-            </div>
-          </header>
+            </header>
 
-          {/* Main Dashboard Container */}
-          <main className="container" style={{ marginTop: '2rem' }}>
-            
-            {/* Desktop Tabs Header Selector */}
-            <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
-              <button 
-                onClick={() => setActiveDashboardTab('home')}
-                className={`btn ${activeDashboardTab === 'home' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                🏠 Home Feed
-              </button>
-              <button 
-                onClick={() => setActiveDashboardTab('dispatch')}
-                className={`btn ${activeDashboardTab === 'dispatch' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                🗺️ SOS Live Dispatch
-              </button>
-              <button 
-                onClick={() => setActiveDashboardTab('chat')}
-                className={`btn ${activeDashboardTab === 'chat' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                🤖 AI Diagnoser Chat
-              </button>
-              <button 
-                onClick={() => setActiveDashboardTab('profile')}
-                className={`btn ${activeDashboardTab === 'profile' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                👤 Billing & Profile
-              </button>
-              <button 
-                onClick={() => setActiveDashboardTab('nearby')}
-                className={`btn ${activeDashboardTab === 'nearby' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                🔍 Nearby Services
-              </button>
-              <button 
-                onClick={() => setActiveDashboardTab('help')}
-                className={`btn ${activeDashboardTab === 'help' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                ❓ Help & Support
-              </button>
-              <button 
-                onClick={() => setActiveDashboardTab('myBookings')}
-                className={`btn ${activeDashboardTab === 'myBookings' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-              >
-                📋 My Bookings
-              </button>
-              {currentUser?.role === 'admin' && (
-                <button 
-                  onClick={() => setCurrentView('admin')}
-                  className="btn btn-secondary"
-                  style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
-                >
-                  ⚙️ Admin Panel
-                </button>
-              )}
-            </div>
+            {/* Page Content */}
+            <div className="dsb-content">
+              <AnimatePresence mode="wait">
+                {/* ── HOME TAB ── */}
+                {activeDashboardTab === 'home' && (
+                  <motion.div key="home" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
 
-            {/* TAB PANEL 1: HOME PANEL */}
-            {activeDashboardTab === 'home' && (
-              <div className="animate-slide-up">
-                {/* Welcome section banner */}
-                <div className="db-welcome-banner">
-                  <div className="db-welcome-info">
-                    <h2 style={{ textAlign: 'left', margin: 0 }}>Good Morning, Disha 👋</h2>
-                    <p style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>Need help today? We're ready to assist you anytime.</p>
-                    
-                    <div className="db-safety-ribbon">
-                      <BookOpen size={16} />
-                      <span><strong>Safety Tip of the Day:</strong> Never stand close to active traffic lanes. Step behind roadside guardrails while waiting for dispatches.</span>
+                    <div className="db2-hero">
+                      <motion.h2 className="db2-hero-greeting" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+                        Good Morning, Disha 👋
+                      </motion.h2>
+                      <div className="db2-hero-sub">
+                        <span className="db2-hero-pill"><MapPin size={14} /> Mumbai, MH</span>
+                        <span className="db2-hero-pill"><span>🌤️</span> 24°C Sunny</span>
+                        <span className="db2-hero-pill"><Clock size={14} /> {liveTime}</span>
+                        <span className="db2-hero-status safe"><span className="db2-hero-status-dot" /> All Systems Normal</span>
+                      </div>
                     </div>
-                  </div>
-                  
-                  {/* Weather/Date metadata pills */}
-                  <div className="db-welcome-widgets">
-                    <div className="db-widget-pill">
-                      <span>🌤️ Sunny 24°C</span>
-                    </div>
-                    <div className="db-widget-pill">
-                      <Calendar size={14} />
-                      <span>{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} | {liveTime}</span>
-                    </div>
-                    <div className="db-widget-pill">
-                      <MapPin size={14} />
-                      <span>Mumbai, MH</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Active SOS Timeline */}
-                {activeEmergencyId && (
-                  <div className="db-card" style={{ marginBottom: '1.5rem', border: '2px solid rgba(239,68,68,0.25)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        🚨 Active SOS Emergency
-                      </h3>
-                      <button 
-                        onClick={() => { setCurrentView('emergencyTrack'); }}
-                        className="btn btn-emergency" 
-                        style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}
-                      >
-                        Track Now →
-                      </button>
+                    <div className="db2-safety-banner">
+                      <ShieldAlert size={15} />
+                      <span><strong>Safety Tip:</strong> Never stand close to active traffic lanes. Step behind guardrails while waiting.</span>
+                      <button onClick={() => {}}><X size={14} /></button>
                     </div>
-                    <SOSTimeline emergencyId={activeEmergencyId} />
-                  </div>
-                )}
 
-                {/* Grid stats/rewards */}
-                <div className="db-grid">
-                  
-                  {/* Left block home panels */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    
-                    {/* Hero Immediate Emergency Action card */}
-                    <div className="db-card db-emergency-panel">
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        🚨 Need Immediate Roadside Assistance?
-                      </h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Select your issue category to trace coordinates and initiate matching.</p>
-                      
-                      <div className="db-issue-selector-grid">
-                        <button onClick={() => handleQuickIssueSelect('Flat Tire')} className={`db-issue-btn ${selectedIssue === 'Flat Tire' ? 'active' : ''}`}>
-                          <div className="db-issue-icon">🔧</div>
-                          <span>Flat Tire</span>
-                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹699</span>
-                        </button>
-                        <button onClick={() => handleQuickIssueSelect('Dead Battery')} className={`db-issue-btn ${selectedIssue === 'Dead Battery' ? 'active' : ''}`}>
-                          <div className="db-issue-icon">🔋</div>
-                          <span>Battery Dead</span>
-                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹999</span>
-                        </button>
-                        <button onClick={() => handleQuickIssueSelect('Fuel Empty')} className={`db-issue-btn ${selectedIssue === 'Fuel Empty' ? 'active' : ''}`}>
-                          <div className="db-issue-icon">⛽</div>
-                          <span>Fuel Empty</span>
-                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹799</span>
-                        </button>
-                        <button onClick={() => handleQuickIssueSelect('Engine Overheat')} className={`db-issue-btn ${selectedIssue === 'Engine Overheat' ? 'active' : ''}`}>
-                          <div className="db-issue-icon">💨</div>
-                          <span>Engine Smoke</span>
-                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹1,499</span>
-                        </button>
-                        <button onClick={() => handleQuickIssueSelect('Vehicle Accident')} className={`db-issue-btn ${selectedIssue === 'Vehicle Accident' ? 'active' : ''}`}>
-                          <div className="db-issue-icon">🚨</div>
-                          <span>Accident</span>
-                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹1,999</span>
-                        </button>
-                        <button onClick={() => handleQuickIssueSelect('Car Towing')} className={`db-issue-btn ${selectedIssue === 'Car Towing' ? 'active' : ''}`}>
-                          <div className="db-issue-icon">🚛</div>
-                          <span>Towing</span>
-                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹1,999</span>
-                        </button>
-                        <button onClick={() => handleQuickIssueSelect('Lockout Bypass')} className={`db-issue-btn ${selectedIssue === 'Lockout Bypass' ? 'active' : ''}`}>
-                          <div className="db-issue-icon">🔓</div>
-                          <span>Locked Out</span>
-                          <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 700 }}>₹899</span>
-                        </button>
+                    {activeEmergencyId && (
+                      <motion.div className="db2-active-card" style={{ marginBottom: '1.5rem' }} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}>
+                        <div className="db2-active-icon"><ShieldAlert size={18} /></div>
+                        <div className="db2-active-info">
+                          <div className="db2-active-title">Active SOS Emergency</div>
+                          <div className="db2-active-sub">Emergency in progress</div>
+                        </div>
+                        <button onClick={() => setCurrentView('emergencyTrack')} className="db2-active-track-btn">Track →</button>
+                      </motion.div>
+                    )}
+
+                    <div className="db2-main-grid">
+                      <div className="db2-left-col">
+
+                        {/* Quick Actions */}
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+                          <div className="db2-section-header">
+                            <h3 className="db2-section-title">Quick Actions</h3>
+                          </div>
+                          <div className="db2-quick-actions">
+                            {[
+                              { label: 'Fuel', icon: <Fuel size={22} />, action: 'Fuel Empty' },
+                              { label: 'Battery', icon: <Battery size={22} />, action: 'Dead Battery' },
+                              { label: 'Tire', icon: <Wrench size={22} />, action: 'Flat Tire' },
+                              { label: 'Tow', icon: <Truck size={22} />, action: 'Car Towing' },
+                              { label: 'Lockout', icon: <Lock size={22} />, action: 'Lockout Bypass' },
+                              { label: 'SOS', icon: <ShieldAlert size={22} />, action: null, isSos: true },
+                            ].map(qa => (
+                              <motion.button key={qa.label} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => qa.isSos ? setShowEmergencyModal(true) : handleQuickIssueSelect(qa.action!)} className={`db2-quick-action-btn ${qa.isSos ? 'sos' : ''}`}>
+                                {qa.icon}
+                                <span>{qa.label}</span>
+                              </motion.button>
+                            ))}
+                          </div>
+                        </motion.div>
+
+                        {/* Nearby Services */}
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+                          <div className="db2-section-header">
+                            <h3 className="db2-section-title">Nearby Services</h3>
+                            <span className="db2-section-link" onClick={() => setActiveDashboardTab('nearby')}>View All →</span>
+                          </div>
+                          <div className="db2-card">
+                            {[
+                              { name: 'Apex Auto Recovery', meta: '⭐ 4.9 · Tire, Battery, Fuel', dist: '1.2 km', icon: '🔧', color: 'rgba(37,99,235,0.1)' },
+                              { name: 'QuickFix Mechanics', meta: '⭐ 4.7 · Towing, Engine', dist: '2.0 km', icon: '⚡', color: 'rgba(34,197,94,0.1)' },
+                              { name: 'RoadAssist Pro', meta: '⭐ 4.8 · All Services', dist: '2.8 km', icon: '🛡️', color: 'rgba(139,92,246,0.1)' },
+                            ].map(s => (
+                              <div key={s.name} className="db2-nearby-item">
+                                <div className="db2-nearby-icon" style={{ background: s.color }}>{s.icon}</div>
+                                <div className="db2-nearby-info">
+                                  <div className="db2-nearby-name">{s.name}</div>
+                                  <div className="db2-nearby-meta">{s.meta}</div>
+                                </div>
+                                <span className="db2-nearby-dist">{s.dist}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+
+                        {/* Service Cards */}
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}>
+                          <div className="db2-section-header">
+                            <h3 className="db2-section-title">Services</h3>
+                          </div>
+                          <div className="db2-services-grid">
+                            {[
+                              { name: 'Flat Tire Repair', price: 699, icon: '🔧', eta: '15-20 min' },
+                              { name: 'Battery Jump', price: 999, icon: '🔋', eta: '10-15 min' },
+                              { name: 'Fuel Delivery', price: 799, icon: '⛽', eta: '20-25 min' },
+                              { name: 'Engine Diagnosis', price: 1499, icon: '🔍', eta: '20-30 min' },
+                              { name: 'Car Towing', price: 1999, icon: '🚛', eta: '25-35 min' },
+                              { name: 'Lockout Help', price: 899, icon: '🔓', eta: '10-15 min' },
+                            ].map(s => (
+                              <motion.div key={s.name} className="db2-service-card" whileHover={{ y: -3 }} transition={{ duration: 0.2 }}>
+                                <div className="db2-service-icon">{s.icon}</div>
+                                <div className="db2-service-name">{s.name}</div>
+                                <div className="db2-service-meta">
+                                  <span className="db2-service-eta">⏱ {s.eta}</span>
+                                  <span className="db2-service-price">₹{s.price.toLocaleString('en-IN')}</span>
+                                </div>
+                                <button onClick={() => handleBookService(s.name, s.price)} className="db2-service-book-btn">Book Now</button>
+                              </motion.div>
+                            ))}
+                          </div>
+                        </motion.div>
+
+                        {/* AI Diagnosis Shortcut */}
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} onClick={() => setActiveDashboardTab('chat')} style={{ cursor: 'pointer' }}>
+                          <div className="db2-ai-widget">
+                            <div className="db2-ai-widget-icon"><Sparkles size={18} /></div>
+                            <div className="db2-ai-widget-text">
+                              <div className="db2-ai-widget-title">AI Diagnosis</div>
+                              <div className="db2-ai-widget-sub">Describe your issue and get instant analysis</div>
+                            </div>
+                            <ChevronRight size={16} className="db2-ai-widget-arrow" />
+                          </div>
+                        </motion.div>
+
+                        {/* Recent Activity */}
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
+                          <div className="db2-section-header">
+                            <h3 className="db2-section-title">Recent Activity</h3>
+                          </div>
+                          <div className="db2-card">
+                            {[
+                              { text: 'Battery Jump Start completed', time: '2h ago', dot: 'success' },
+                              { text: 'Flat Tire Repair booked', time: '1d ago', dot: 'info' },
+                              { text: 'Payment of ₹999 processed', time: '1d ago', dot: 'success' },
+                              { text: 'AI Diagnosis: Engine Overheat', time: '3d ago', dot: 'warning' },
+                            ].map((a, i) => (
+                              <div key={i} className="db2-activity-item">
+                                <div className={`db2-activity-dot ${a.dot}`} />
+                                <span className="db2-activity-text">{a.text}</span>
+                                <span className="db2-activity-time">{a.time}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+
+                        {/* Emergency CTA */}
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}>
+                          <button onClick={() => setShowEmergencyModal(true)} className="btn btn-emergency" style={{ width: '100%', padding: '0.85rem', fontSize: '0.9rem' }}>
+                            <ShieldAlert size={16} /> Request Emergency Help
+                          </button>
+                        </motion.div>
                       </div>
 
-                      {/* Service Cards with Book Now buttons */}
-                      <div style={{ marginTop: '1.5rem' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>QUICK BOOK SERVICES:</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                      {/* RIGHT COLUMN */}
+                      <div className="db2-right-col">
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="db2-membership-card">
+                          <div className="db2-membership-tier">VIP Gold Member</div>
+                          <div className="db2-membership-name">Disha's Membership</div>
+                          <div className="db2-membership-points">
+                            <span className="db2-membership-points-num">4,200</span>
+                            <span className="db2-membership-points-label">PTS</span>
+                          </div>
+                          <div className="db2-membership-progress">
+                            <div className="db2-membership-progress-fill" style={{ width: '70%' }} />
+                          </div>
+                          <div className="db2-membership-desc">2 emergency credits remaining. Refer friends to earn more!</div>
+                        </motion.div>
+
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }} className="db2-card">
+                          <div className="db2-card-title"><CreditCard size={15} /> Wallet & Credits</div>
+                          <div className="db2-wallet">
+                            <div>
+                              <div className="db2-wallet-balance">₹2,450</div>
+                              <div className="db2-wallet-label">Available Balance</div>
+                            </div>
+                            <button className="db2-wallet-add-btn">+ Add Funds</button>
+                          </div>
+                        </motion.div>
+
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="db2-card">
+                          <div className="db2-card-title"><Phone size={15} /> Emergency Contacts</div>
                           {[
-                            { name: 'Flat Tire Repair', price: 699, icon: '🔧', eta: '15-20 min' },
-                            { name: 'Battery Jump Start', price: 999, icon: '🔋', eta: '10-15 min' },
-                            { name: 'Fuel Delivery', price: 799, icon: '⛽', eta: '20-25 min' },
-                            { name: 'Engine Breakdown Diagnosis', price: 1499, icon: '🔍', eta: '20-30 min' },
-                            { name: 'Car Towing', price: 1999, icon: '🚛', eta: '25-35 min' },
-                            { name: 'Lockout Assistance', price: 899, icon: '🔓', eta: '10-15 min' },
-                          ].map(s => (
-                            <div key={s.name} style={{
-                              background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '1rem',
-                              border: '1px solid var(--border-light)',
-                            }}>
-                              <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{s.icon}</div>
-                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{s.name}</div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.25rem 0' }}>ETA: {s.eta}</div>
-                              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#22c55e', marginBottom: '0.75rem' }}>₹{s.price.toLocaleString('en-IN')}</div>
-                              <button 
-                                onClick={() => handleBookService(s.name, s.price)}
-                                style={{
-                                  width: '100%', padding: '0.5rem', borderRadius: '8px',
-                                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                                  color: '#fff', border: 'none', fontWeight: 700, fontSize: '0.8rem',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Book Now →
-                              </button>
+                            { name: 'Mom', relation: 'Family', phone: '+91 98765 43210', color: 'rgba(239,68,68,0.15)', text: '#EF4444' },
+                            { name: 'Priya', relation: 'Friend', phone: '+91 87654 32109', color: 'rgba(139,92,246,0.15)', text: '#8B5CF6' },
+                          ].map(c => (
+                            <div key={c.name} className="db2-contact-item">
+                              <div className="db2-contact-avatar" style={{ background: c.color, color: c.text }}>{c.name[0]}</div>
+                              <div className="db2-contact-info">
+                                <div className="db2-contact-name">{c.name}</div>
+                                <div className="db2-contact-relation">{c.relation}</div>
+                              </div>
+                              <span className="db2-contact-phone">{c.phone}</span>
                             </div>
                           ))}
-                        </div>
-                      </div>
+                        </motion.div>
 
-                      <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center' }}>
-                        <button 
-                          onClick={() => setShowEmergencyModal(true)}
-                          className="btn btn-emergency"
-                          style={{ padding: '1rem 2.5rem', width: '100%', maxWidth: '350px' }}
-                        >
-                          🚨 Request Emergency Help
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* View Mechanic Profile Button */}
-                    <div className="db-card" style={{ cursor: 'pointer' }} onClick={() => setCurrentView('mechanicProfile')}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                          <img 
-                            src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=100" 
-                            alt="Alex Thompson" 
-                            style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 800, fontSize: '1rem' }}>👨‍🔧 Alex Thompson</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Apex Auto Recovery • ⭐ 4.9 (142 reviews)</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.15rem' }}>
-                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--secondary)' }}></span>
-                              Available Now • 6 min ETA
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="db2-card">
+                          <div className="db2-card-title"><PhoneCall size={15} /> 24/7 Hotline</div>
+                          <div className="db2-hotline">
+                            <div className="db2-hotline-icon"><PhoneCall size={18} /></div>
+                            <div className="db2-hotline-info">
+                              <div className="db2-hotline-number">+1-800-555-SOS</div>
+                              <div className="db2-hotline-label">Dispatch Hotline</div>
                             </div>
+                            <a href="tel:+1800555SOSAI" className="db2-hotline-call-btn">Call</a>
                           </div>
-                        </div>
-                        <button className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
-                          View Profile →
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Dashboard stats numbers */}
-                    <div className="db-card">
-                      <div className="db-card-title-row">
-                        <div className="db-card-title">📈 Your Driving & Safety Records</div>
-                      </div>
-                      <div className="db-stats-panel-grid">
-                        <div className="db-stat-box">
-                          <span className="db-stat-num">12</span>
-                          <span className="db-stat-lbl">Services Completed</span>
-                        </div>
-                        <div className="db-stat-box">
-                          <span className="db-stat-num">9.5m</span>
-                          <span className="db-stat-lbl">Avg Response Time</span>
-                        </div>
-                        <div className="db-stat-box">
-                          <span className="db-stat-num">₹14,000</span>
-                          <span className="db-stat-lbl">Money Saved (AI Diagnostics)</span>
-                        </div>
-                        <div className="db-stat-box">
-                          <span className="db-stat-num">142 mi</span>
-                          <span className="db-stat-lbl">Distance Covered</span>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* Right block cards */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    
-                    {/* Gamified points circle */}
-                    <div className="db-card">
-                      <div className="db-card-title-row">
-                        <div className="db-card-title">⭐ Rewards & membership</div>
-                      </div>
-                      <div className="db-rewards-circle-container">
-                        <div className="db-rewards-circle">
-                          <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
-                            <circle cx="50" cy="50" r="40" className="circle-bg" />
-                            <circle 
-                              cx="50" 
-                              cy="50" 
-                              r="40" 
-                              className="circle-progress" 
-                              strokeDasharray="251"
-                              strokeDashoffset="75" // 70% progress fill representation
-                            />
-                          </svg>
-                          <div className="circle-text">
-                            <span style={{ fontWeight: 900, fontSize: '1.25rem' }}>4,200</span>
-                            <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>PTS</span>
+                          <div style={{ marginTop: '0.5rem' }}>
+                            <a href="https://wa.me/1800555SOS" className="db2-hotline" style={{ borderColor: 'rgba(34,197,94,0.15)' }}>
+                              <div className="db2-hotline-icon" style={{ background: 'rgba(34,197,94,0.1)', color: '#22C55E' }}><MessageCircle size={18} /></div>
+                              <div className="db2-hotline-info">
+                                <div className="db2-hotline-number" style={{ color: '#22C55E' }}>WhatsApp</div>
+                                <div className="db2-hotline-label">Chat with us</div>
+                              </div>
+                            </a>
                           </div>
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: '1rem' }}>Gold Tier Driver</div>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>You have <strong>2 emergency credits</strong> remaining. Refer friends to earn more credits!</p>
-                        </div>
-                      </div>
-                    </div>
+                        </motion.div>
 
-                    {/* Quick Payment Saved Card */}
-                    <div className="db-card">
-                      <div className="db-card-title-row">
-                        <div className="db-card-title">💳 Quick Payment Method</div>
-                      </div>
-                      <div className="db-payment-card-visual">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.05em' }}>ROADRESCUE AI VIP</span>
-                          <span style={{ fontSize: '1.1rem', fontWeight: 900 }}>VISA</span>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '1.1rem', letterSpacing: '0.15em', fontWeight: 700, margin: '0.75rem 0' }}>**** **** **** 4920</div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94A3B8' }}>
-                            <span>CARDHOLDER: DISHA</span>
-                            <span>EXP: 09/29</span>
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.26 }} onClick={() => setActiveDashboardTab('chat')} className="db2-ai-widget">
+                          <div className="db2-ai-widget-icon"><Bot size={18} /></div>
+                          <div className="db2-ai-widget-text">
+                            <div className="db2-ai-widget-title">AI Assistant</div>
+                            <div className="db2-ai-widget-sub">Ask anything about your vehicle</div>
                           </div>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => alert("Invoice downloaded successfully.")}
-                        className="btn btn-secondary" 
-                        style={{ width: '100%', fontSize: '0.85rem', padding: '0.6rem' }}
-                      >
-                        📄 Download Recent Invoice
-                      </button>
-                    </div>
-
-                    {/* Customer Support Floating Links */}
-                    <div className="db-card">
-                      <div className="db-card-title-row">
-                        <div className="db-card-title">📞 24/7 Hotline support</div>
-                      </div>
-                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Get instant help from live human operators.</p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <a href="tel:+1800555SOSAI" className="btn btn-secondary" style={{ padding: '0.5rem', fontSize: '0.85rem', justifyContent: 'center' }}>
-                          📞 Dispatch Hotline (+1-800-555-SOS)
-                        </a>
-                        <a href="https://wa.me/1800555SOS" className="btn btn-secondary" style={{ padding: '0.5rem', fontSize: '0.85rem', justifyContent: 'center', borderColor: '#22C55E' }}>
-                          💬 Chat on WhatsApp
-                        </a>
+                          <ChevronRight size={16} className="db2-ai-widget-arrow" />
+                        </motion.div>
                       </div>
                     </div>
-
-                  </div>
-
-                </div>
-              </div>
-            )}
-
-            {/* TAB PANEL 2: MAP / DISPATCH LIVE PANEL */}
-            {activeDashboardTab === 'dispatch' && (
-              <div className="animate-slide-up">
-                {!isSimulating ? (
-                  <RequestAssistance 
-                    startSimulation={startMapSimulation}
-                    setMapStatus={setMapStatus}
-                    setMapEta={setMapEta}
-                    setMapDist={setMapDist}
-                    setSelectedIssue={setSelectedIssue}
-                    setActiveDashboardTab={setActiveDashboardTab}
-                    onTriggerCheckout={(payload) => {
-                      setCheckoutData(payload);
-                      setCurrentView('checkout');
-                    }}
-                  />
-                ) : (
-                  <LiveTracking 
-                    cancelSimulation={cancelSimulation}
-                    setSelectedIssue={setSelectedIssue}
-                    setActiveDashboardTab={setActiveDashboardTab}
-                  />
+                  </motion.div>
                 )}
-              </div>
-            )}
 
-            {/* TAB PANEL 3: AI DIAGNOSER CHAT */}
-            {activeDashboardTab === 'chat' && (
-              <div className="animate-slide-up">
-                <AIAssistant 
-                  onBookService={(serviceName, price) => {
-                    handleBookService(serviceName, price);
-                  }}
-                />
-              </div>
-            )}
+                {/* ── DISPATCH TAB ── */}
+                {activeDashboardTab === 'dispatch' && (
+                  <motion.div key="dispatch" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                    <SOSDispatch onBack={() => setActiveDashboardTab('home')} />
+                  </motion.div>
+                )}
 
-            {/* TAB PANEL 4: BILLING & PROFILE */}
-            {activeDashboardTab === 'profile' && (
-              <div className="animate-slide-up">
-                <ProfileSettingsPage onLogout={handleLogout} />
-              </div>
-            )}
+                {/* ── AI CHAT TAB ── */}
+                {activeDashboardTab === 'chat' && (
+                  <motion.div key="chat" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                    <AIAssistant onBookService={(name, price) => handleBookService(name, price)} />
+                  </motion.div>
+                )}
 
-            {/* TAB PANEL 5: NEARBY SERVICES */}
-            {activeDashboardTab === 'nearby' && (
-              <div className="animate-slide-up">
-                <NearbyServices />
-              </div>
-            )}
+                {/* ── PROFILE TAB ── */}
+                {activeDashboardTab === 'profile' && (
+                  <motion.div key="profile" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                    <ProfileSettingsPage onLogout={handleLogout} />
+                  </motion.div>
+                )}
 
-            {/* TAB PANEL 6: HELP & SUPPORT */}
-            {activeDashboardTab === 'help' && (
-              <div className="animate-slide-up">
-                <HelpSupportPage setActiveDashboardTab={setActiveDashboardTab} />
-              </div>
-            )}
+                {/* ── NEARBY TAB ── */}
+                {activeDashboardTab === 'nearby' && (
+                  <motion.div key="nearby" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                    <NearbyServices />
+                  </motion.div>
+                )}
 
-            {/* TAB PANEL 7: NOTIFICATIONS & ACTIVITY CENTER */}
-            {activeDashboardTab === 'notifications' && (
-              <div className="animate-slide-up">
-                <NotificationsCenter />
-              </div>
-            )}
+                {/* ── HELP TAB ── */}
+                {activeDashboardTab === 'help' && (
+                  <motion.div key="help" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                    <HelpSupportPage setActiveDashboardTab={setActiveDashboardTab} />
+                  </motion.div>
+                )}
 
-            {/* TAB PANEL 8: MY BOOKINGS */}
-            {activeDashboardTab === 'myBookings' && (
-              <div className="animate-slide-up">
-                <MyBookings />
-              </div>
-            )}
+                {/* ── NOTIFICATIONS TAB ── */}
+                {activeDashboardTab === 'notifications' && (
+                  <motion.div key="notif" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                    <NotificationsCenter />
+                  </motion.div>
+                )}
 
-          </main>
+                {/* ── BOOKINGS TAB ── */}
+                {activeDashboardTab === 'myBookings' && (
+                  <motion.div key="bookings" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                    <MyBookings />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
 
-          {/* Sticky Mobile Bottom Navigation Bar */}
+          {/* Mobile Bottom Nav */}
           <div className="mobile-bottom-nav">
-            <button 
-              onClick={() => setActiveDashboardTab('home')}
-              className={`mobile-bottom-tab ${activeDashboardTab === 'home' ? 'active' : ''}`}
-            >
-              <span>🏠</span>
-              <span>Home</span>
+            <button onClick={() => setActiveDashboardTab('home')} className={`mobile-bottom-tab ${activeDashboardTab === 'home' ? 'active' : ''}`}>
+              <Home size={20} /><span>Home</span>
             </button>
-            <button 
-              onClick={() => setActiveDashboardTab('dispatch')}
-              className={`mobile-bottom-tab ${activeDashboardTab === 'dispatch' ? 'active' : ''}`}
-            >
-              <span>🗺️</span>
-              <span>Live SOS</span>
+            <button onClick={() => setActiveDashboardTab('dispatch')} className={`mobile-bottom-tab ${activeDashboardTab === 'dispatch' ? 'active' : ''}`}>
+              <Radio size={20} /><span>Dispatch</span>
             </button>
-            <button 
-              onClick={() => setActiveDashboardTab('chat')}
-              className={`mobile-bottom-tab ${activeDashboardTab === 'chat' ? 'active' : ''}`}
-            >
-              <span>🤖</span>
-              <span>AI Chat</span>
+            <button onClick={() => setActiveDashboardTab('chat')} className={`mobile-bottom-tab ${activeDashboardTab === 'chat' ? 'active' : ''}`}>
+              <Bot size={20} /><span>AI Chat</span>
             </button>
-            <button 
-              onClick={() => setActiveDashboardTab('profile')}
-              className={`mobile-bottom-tab ${activeDashboardTab === 'profile' ? 'active' : ''}`}
-            >
-              <span>👤</span>
-              <span>Profile</span>
+            <button onClick={() => setActiveDashboardTab('nearby')} className={`mobile-bottom-tab ${activeDashboardTab === 'nearby' ? 'active' : ''}`}>
+              <MapPin size={20} /><span>Nearby</span>
             </button>
-            <button 
-              onClick={() => setActiveDashboardTab('nearby')}
-              className={`mobile-bottom-tab ${activeDashboardTab === 'nearby' ? 'active' : ''}`}
-            >
-              <span>🔍</span>
-              <span>Nearby</span>
-            </button>
-            <button 
-              onClick={() => setActiveDashboardTab('help')}
-              className={`mobile-bottom-tab ${activeDashboardTab === 'help' ? 'active' : ''}`}
-            >
-              <span>❓</span>
-              <span>Help</span>
-            </button>
-            <button 
-              onClick={() => setActiveDashboardTab('myBookings')}
-              className={`mobile-bottom-tab ${activeDashboardTab === 'myBookings' ? 'active' : ''}`}
-            >
-              <span>📋</span>
-              <span>Bookings</span>
+            <button onClick={() => setActiveDashboardTab('myBookings')} className={`mobile-bottom-tab ${activeDashboardTab === 'myBookings' ? 'active' : ''}`}>
+              <Bookmark size={20} /><span>Bookings</span>
             </button>
           </div>
 
@@ -2275,89 +2138,5 @@ export default function App() {
         }}
       />
     </>
-  );
-}
-
-/* SOS Timeline Component for User Dashboard */
-function SOSTimeline({ emergencyId }: { emergencyId: string }) {
-  const [emergency, setEmergency] = useState<any>(null);
-
-  useEffect(() => {
-    const load = () => {
-      const data = EmergencyStore.getById(emergencyId);
-      setEmergency(data);
-    };
-    load();
-    const unsub = EmergencyStore.subscribe(load);
-    return () => unsub();
-  }, [emergencyId]);
-
-  if (!emergency) return null;
-
-  const statuses = ['Pending', 'Accepted', 'Mechanic Assigned', 'Mechanic En Route', 'Arrived', 'Completed'];
-  const currentIdx = statuses.indexOf(emergency.status);
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: '200px' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Emergency ID</div>
-          <div style={{ fontWeight: 800, fontFamily: 'monospace', color: '#ef4444', fontSize: '0.9rem' }}>{emergency.id}</div>
-        </div>
-        <div style={{ flex: 1, minWidth: '200px' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Emergency Type</div>
-          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{emergency.emergency_type}</div>
-        </div>
-        <div style={{ flex: 1, minWidth: '200px' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Assigned Mechanic</div>
-          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{emergency.assigned_mechanic || 'Pending'}</div>
-        </div>
-        <div style={{ flex: 1, minWidth: '200px' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Status</div>
-          <div style={{
-            fontWeight: 800, fontSize: '0.85rem',
-            color: emergency.status === 'Completed' ? '#22c55e' : emergency.status === 'Cancelled' ? '#ef4444' : '#f59e0b'
-          }}>{emergency.status}</div>
-        </div>
-      </div>
-      <div className="timeline-stepper" style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', padding: '0.5rem 0' }}>
-        {statuses.map((s, i) => {
-          const isCompleted = currentIdx >= i;
-          const isActive = emergency.status === s;
-          return (
-            <div key={s} style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', flex: 1,
-              position: 'relative'
-            }}>
-              <div style={{
-                width: i <= currentIdx ? '100%' : '0%',
-                height: '3px',
-                background: isCompleted ? '#22c55e' : 'var(--border-light)',
-                position: 'absolute', top: '10px', left: '-50%', zIndex: 0,
-                transition: 'width 0.5s ease'
-              }} />
-              <div style={{
-                width: '22px', height: '22px', borderRadius: '50%',
-                background: isCompleted ? '#22c55e' : isActive ? '#f59e0b' : 'var(--border-light)',
-                border: isActive ? '3px solid #f59e0b' : 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.65rem', fontWeight: 800, color: isCompleted ? '#fff' : 'transparent',
-                position: 'relative', zIndex: 1,
-                transition: 'all 0.3s ease'
-              }}>
-                {isCompleted ? '✓' : ''}
-              </div>
-              <span style={{
-                fontSize: '0.6rem', fontWeight: isActive ? 800 : 600,
-                color: isCompleted ? '#22c55e' : isActive ? '#f59e0b' : 'var(--text-muted)',
-                textAlign: 'center', maxWidth: '80px', lineHeight: 1.2
-              }}>
-                {s === 'Pending' ? 'Pending' : s === 'Accepted' ? 'Accepted' : s === 'Mechanic Assigned' ? 'Assigned' : s === 'Mechanic En Route' ? 'On Route' : s === 'Arrived' ? 'Arrived' : 'Completed'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }

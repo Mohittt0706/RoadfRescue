@@ -127,6 +127,15 @@ export function requestLogger(req, res, next) {
   const start = Date.now();
   const { method, originalUrl } = req;
 
+  // Log incoming request at debug level
+  logger.debug(`${method} ${originalUrl} - incoming`, {
+    method,
+    url: originalUrl,
+    ip: req.ip || req.connection?.remoteAddress,
+    userAgent: req.headers['user-agent'],
+    origin: req.headers.origin || null,
+  });
+
   res.on('finish', () => {
     const duration = Date.now() - start;
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
@@ -135,7 +144,8 @@ export function requestLogger(req, res, next) {
       url: originalUrl,
       status: res.statusCode,
       duration: `${duration}ms`,
-      ip: req.ip,
+      ip: req.ip || req.connection?.remoteAddress,
+      origin: req.headers.origin || null,
       userId: req.user?.id || null,
     });
   });

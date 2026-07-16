@@ -1,0 +1,150 @@
+
+> roadfrescue-backend@1.0.0 dev
+> nodemon index.js
+
+[33m[nodemon] 3.1.14[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[32m[nodemon] starting `node index.js`[39m
+MongoDB not configured or running in fallback mode. Using SQLite for Emergency Requests.
+⚠️ Razorpay credentials missing in .env. Initializing Mock Payment Provider for development.
+◇ injected env (13) from .env // tip: ⌘ override existing { override: true }
+[36m[2026-07-11T05:08:54.185Z] [INFO][0m [Server] Logger initialized {"logDir":"C:\\Users\\parma\\Desktop\\RoadfRescue\\backend\\logs"}
+[DB] Initializing database at: C:\Users\parma\Desktop\RoadfRescue\backend\roadrescue.db
+[DB] Running migrations...
+[Migrations] No pending migrations.
+[DB] Schema version: 6
+[DB] Initializing repositories...
+[DB] Initializing services...
+[DB] Seeding demo data...
+[DB] Demo user already exists: user@roadrescue.in
+[DB] Demo mechanic already exists: mechanic@roadrescue.in
+[DB] Demo admin already exists: admin@roadrescue.in
+[DB] Demo user verification: {
+  user: 'user@roadrescue.in',
+  mechanic: 'mechanic@roadrescue.in',
+  admin: 'admin@roadrescue.in'
+}
+[DB] Bootstrap complete.
+Running workflow database migrations...
+✅ Workflow database migrations complete.
+Running workflow payment database migrations...
+✅ Workflow payment database migrations complete.
+Running workflow notification database migrations...
+✅ Workflow notification database migrations complete.
+Running workflow chat database migrations...
+✅ Workflow chat database migrations complete.
+[36m[2026-07-11T05:08:55.982Z] [INFO][0m [Health] Running startup checks...
+[36m[2026-07-11T05:08:55.985Z] [INFO][0m [Health] Startup checks passed - server is ready
+[36m[2026-07-11T05:08:55.998Z] [INFO][0m RoadRescue API server started {"port":"3001","environment":"development","corsOrigins":"http://localhost:5173, http://localhost:3000","schemaVersion":6,"migrationsApplied":"none","openai":"Configured","uptime":"0s"}
+
+RoadRescue API running on port 3001
+Environment: development
+CORS Origins: http://localhost:5173, http://localhost:3000
+Database Schema Version: 6
+Migrations Applied: none
+OpenAI: Configured
+
+[36m[2026-07-11T05:09:00.950Z] [INFO][0m Socket client connected {"socketId":"Wz9QrpBQrocg8ewUAAAB"}
+[36m[2026-07-11T05:09:07.246Z] [INFO][0m Admin login successful {"email":"admin@roadrescue.in","userId":"admin-demo-001","ip":"::1"}
+[36m[2026-07-11T05:09:07.251Z] [INFO][0m POST /api/auth/admin/login 200 {"method":"POST","url":"/api/auth/admin/login","status":200,"duration":"518ms","ip":"::1","origin":null,"userId":null}
+[36m[2026-07-11T05:09:07.358Z] [INFO][0m GET /api/admin/analytics 200 {"method":"GET","url":"/api/admin/analytics","status":200,"duration":"9ms","ip":"::1","origin":null,"userId":"admin-demo-001"}
+[36m[2026-07-11T05:09:07.398Z] [INFO][0m GET /api/emergency 200 {"method":"GET","url":"/api/emergency","status":200,"duration":"3ms","ip":"::1","origin":null,"userId":"admin-demo-001"}
+[36m[2026-07-11T05:09:19.775Z] [INFO][0m Admin login successful {"email":"admin@roadrescue.in","userId":"admin-demo-001","ip":"::1"}
+[36m[2026-07-11T05:09:19.777Z] [INFO][0m POST /api/auth/admin/login 200 {"method":"POST","url":"/api/auth/admin/login","status":200,"duration":"504ms","ip":"::1","origin":null,"userId":null}
+[36m[2026-07-11T05:09:19.864Z] [INFO][0m GET /api/emergency 200 {"method":"GET","url":"/api/emergency","status":200,"duration":"2ms","ip":"::1","origin":null,"userId":"admin-demo-001"}
+[36m[2026-07-11T05:09:34.082Z] [INFO][0m Admin login successful {"email":"admin@roadrescue.in","userId":"admin-demo-001","ip":"::1"}
+[36m[2026-07-11T05:09:34.084Z] [INFO][0m POST /api/auth/admin/login 200 {"method":"POST","url":"/api/auth/admin/login","status":200,"duration":"474ms","ip":"::1","origin":null,"userId":null}
+[36m[2026-07-11T05:09:34.169Z] [INFO][0m GET /api/emergency 200 {"method":"GET","url":"/api/emergency","status":200,"duration":"1ms","ip":"::1","origin":null,"userId":"admin-demo-001"}
+[36m[2026-07-11T05:19:33.972Z] [INFO][0m Socket client disconnected {"socketId":"Wz9QrpBQrocg8ewUAAAB"}
+[36m[2026-07-11T05:36:26.525Z] [INFO][0m Socket client connected {"socketId":"I6TZ8Sv3u4oWtwOxAAAD"}
+[36m[2026-07-11T05:38:42.517Z] [INFO][0m Admin login successful {"email":"admin@roadrescue.in","userId":"admin-demo-001","ip":"::1"}
+[36m[2026-07-11T05:38:42.520Z] [INFO][0m POST /api/auth/admin/login 200 {"method":"POST","url":"/api/auth/admin/login","status":200,"duration":"725ms","ip":"::1","origin":"http://localhost:5173","userId":null}
+[36m[2026-07-11T05:38:42.540Z] [INFO][0m GET /api/bookings 304 {"method":"GET","url":"/api/bookings","status":304,"duration":"4ms","ip":"::1","origin":"http://localhost:5173","userId":"admin-demo-001"}
+[36m[2026-07-11T05:38:42.547Z] [INFO][0m GET /api/notifications 304 {"method":"GET","url":"/api/notifications","status":304,"duration":"3ms","ip":"::1","origin":"http://localhost:5173","userId":"admin-demo-001"}
+[36m[2026-07-11T05:38:42.551Z] [INFO][0m GET /api/emergency 304 {"method":"GET","url":"/api/emergency","status":304,"duration":"2ms","ip":"::1","origin":"http://localhost:5173","userId":"admin-demo-001"}
+[36m[2026-07-11T05:38:42.556Z] [INFO][0m GET /api/mechanics 304 {"method":"GET","url":"/api/mechanics","status":304,"duration":"2ms","ip":"::1","origin":"http://localhost:5173","userId":"admin-demo-001"}
+[36m[2026-07-11T05:38:42.565Z] [INFO][0m GET /api/admin/analytics 200 {"method":"GET","url":"/api/admin/analytics","status":200,"duration":"7ms","ip":"::1","origin":"http://localhost:5173","userId":"admin-demo-001"}
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node index.js`[39m
+MongoDB not configured or running in fallback mode. Using SQLite for Emergency Requests.
+⚠️ Razorpay credentials missing in .env. Initializing Mock Payment Provider for development.
+◇ injected env (13) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+[36m[2026-07-11T05:41:34.313Z] [INFO][0m [Server] Logger initialized {"logDir":"C:\\Users\\parma\\Desktop\\RoadfRescue\\backend\\logs"}
+[DB] Initializing database at: C:\Users\parma\Desktop\RoadfRescue\backend\roadrescue.db
+[DB] Running migrations...
+[Migrations] No pending migrations.
+[DB] Schema version: 6
+[DB] Initializing repositories...
+[DB] Initializing services...
+[DB] Seeding demo data...
+[DB] Demo user already exists: user@roadrescue.in
+[DB] Demo mechanic already exists: mechanic@roadrescue.in
+[DB] Demo admin already exists: admin@roadrescue.in
+[DB] Demo user verification: {
+  user: 'user@roadrescue.in',
+  mechanic: 'mechanic@roadrescue.in',
+  admin: 'admin@roadrescue.in'
+}
+[DB] Bootstrap complete.
+Running workflow database migrations...
+✅ Workflow database migrations complete.
+Running workflow payment database migrations...
+✅ Workflow payment database migrations complete.
+Running workflow notification database migrations...
+✅ Workflow notification database migrations complete.
+Running workflow chat database migrations...
+✅ Workflow chat database migrations complete.
+[36m[2026-07-11T05:41:36.173Z] [INFO][0m [Health] Running startup checks...
+[36m[2026-07-11T05:41:37.115Z] [INFO][0m [Health] Startup checks passed - server is ready
+[31m[2026-07-11T05:41:37.144Z] [ERROR][0m Uncaught Exception {"message":"listen EADDRINUSE: address already in use :::3001","stack":"Error: listen EADDRINUSE: address already in use :::3001\n    at Server.setupListenHandle [as _listen2] (node:net:2008:16)\n    at listenInCluster (node:net:2065:12)\n    at Server.listen (node:net:2170:7)\n    at file:///C:/Users/parma/Desktop/RoadfRescue/backend/index.js:329:8\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async node:internal/modules/esm/loader:633:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)"}
+[36m[2026-07-11T05:41:37.148Z] [INFO][0m [Server] Received uncaughtException, shutting down gracefully...
+
+[Server] Received uncaughtException, shutting down gracefully...
+[DB] Database connection closed.
+[36m[2026-07-11T05:41:37.153Z] [INFO][0m [Server] Server closed
+[32m[nodemon] clean exit - waiting for changes before restart[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node index.js`[39m
+MongoDB not configured or running in fallback mode. Using SQLite for Emergency Requests.
+⚠️ Razorpay credentials missing in .env. Initializing Mock Payment Provider for development.
+◇ injected env (13) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+[36m[2026-07-11T05:41:53.315Z] [INFO][0m [Server] Logger initialized {"logDir":"C:\\Users\\parma\\Desktop\\RoadfRescue\\backend\\logs"}
+[DB] Initializing database at: C:\Users\parma\Desktop\RoadfRescue\backend\roadrescue.db
+[DB] Running migrations...
+[Migrations] No pending migrations.
+[DB] Schema version: 6
+[DB] Initializing repositories...
+[DB] Initializing services...
+[DB] Seeding demo data...
+[DB] Demo user already exists: user@roadrescue.in
+[DB] Demo mechanic already exists: mechanic@roadrescue.in
+[DB] Demo admin already exists: admin@roadrescue.in
+[DB] Demo user verification: {
+  user: 'user@roadrescue.in',
+  mechanic: 'mechanic@roadrescue.in',
+  admin: 'admin@roadrescue.in'
+}
+[DB] Bootstrap complete.
+Running workflow database migrations...
+✅ Workflow database migrations complete.
+Running workflow payment database migrations...
+✅ Workflow payment database migrations complete.
+Running workflow notification database migrations...
+✅ Workflow notification database migrations complete.
+Running workflow chat database migrations...
+✅ Workflow chat database migrations complete.
+[36m[2026-07-11T05:41:55.352Z] [INFO][0m [Health] Running startup checks...
+[36m[2026-07-11T05:41:55.354Z] [INFO][0m [Health] Startup checks passed - server is ready
+[36m[2026-07-11T05:41:55.365Z] [INFO][0m RoadRescue API server started {"port":"3001","environment":"development","corsOrigins":"http://localhost:5173, http://localhost:3000","schemaVersion":6,"migrationsApplied":"none","openai":"Configured","uptime":"0s"}
+
+RoadRescue API running on port 3001
+Environment: development
+CORS Origins: http://localhost:5173, http://localhost:3000
+Database Schema Version: 6
+Migrations Applied: none
+OpenAI: Configured
+
+[36m[2026-07-11T05:41:57.733Z] [INFO][0m Socket client connected {"socketId":"TS8I_q5-HiFuLZFNAAAB"}

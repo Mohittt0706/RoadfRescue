@@ -14,7 +14,10 @@ import {
   CheckCircle,
   Wifi,
   Trash2,
-  Compass
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Crosshair
 } from 'lucide-react';
 
 interface RequestAssistanceProps {
@@ -343,24 +346,26 @@ export default function RequestAssistance({
       {/* Stepper Node Header (Steps 1 to 5) */}
       {step < 6 && (
         <div className="stepper-header">
-          <div className="stepper-progress-bar" style={{ width: `${(step / 5) * 100}%` }}></div>
-          
           <div className={`step-node ${step >= 1 ? 'completed' : ''} ${step === 1 ? 'active' : ''}`}>
             <div className="step-circle">{step > 1 ? <Check size={16} /> : '1'}</div>
             <span className="step-label">Location</span>
           </div>
+          <div className={`step-connector ${step > 1 ? 'completed' : ''}`} />
           <div className={`step-node ${step >= 2 ? 'completed' : ''} ${step === 2 ? 'active' : ''}`}>
             <div className="step-circle">{step > 2 ? <Check size={16} /> : '2'}</div>
             <span className="step-label">Vehicle</span>
           </div>
+          <div className={`step-connector ${step > 2 ? 'completed' : ''}`} />
           <div className={`step-node ${step >= 3 ? 'completed' : ''} ${step === 3 ? 'active' : ''}`}>
             <div className="step-circle">{step > 3 ? <Check size={16} /> : '3'}</div>
             <span className="step-label">Details</span>
           </div>
+          <div className={`step-connector ${step > 3 ? 'completed' : ''}`} />
           <div className={`step-node ${step >= 4 ? 'completed' : ''} ${step === 4 ? 'active' : ''}`}>
             <div className="step-circle">{step > 4 ? <Check size={16} /> : '4'}</div>
             <span className="step-label">AI Diagnosis</span>
           </div>
+          <div className={`step-connector ${step > 4 ? 'completed' : ''}`} />
           <div className={`step-node ${step >= 5 ? 'completed' : ''} ${step === 5 ? 'active' : ''}`}>
             <div className="step-circle">{step > 5 ? <Check size={16} /> : '5'}</div>
             <span className="step-label">Booking</span>
@@ -372,121 +377,174 @@ export default function RequestAssistance({
           STEP 1: LOCATION CONFIRMATION
           ========================================== */}
       {step === 1 && (
-        <div className="wizard-card animate-slide-up">
-          <div className="wizard-card-header">
-            <h2 className="wizard-card-title" style={{ textAlign: 'left', margin: 0 }}>
-              📍 Confirm Your Emergency Location
-            </h2>
-            <p className="wizard-card-subtitle">
-              Verify your coordinates. Drag the marker pin on the vector street grid to lock down the location where help is needed.
+        <>
+          {/* Hero Section */}
+          <div className="sos-hero">
+            <h2 className="sos-hero-title">Confirm Your Emergency Location</h2>
+            <p className="sos-hero-subtitle">
+              Verify your coordinates on the map. Drag the marker or search below to pinpoint exactly where help is needed.
             </p>
           </div>
 
-          {/* Search bar */}
-          <div className="location-search-container">
-            <Search className="location-search-icon" size={18} />
-            <input 
-              type="text"
-              placeholder="Search address manually..."
-              className="location-search-input"
-              value={searchVal}
-              onChange={(e) => { setSearchVal(e.target.value); setShowSuggestions(true); }}
-            />
-            {showSuggestions && searchVal && (
-              <div className="search-results-dropdown">
-                {suggestions.filter(s => s.name.toLowerCase().includes(searchVal.toLowerCase())).map((s, idx) => (
-                  <div key={idx} className="search-result-item" onClick={() => selectSuggestion(s)}>
-                    <MapPin size={12} />
-                    <span>{s.name}</span>
-                  </div>
-                ))}
+          {/* Search Bar in Premium Card */}
+          <div className="location-search-card">
+            <div className="location-search-container">
+              <Search className="location-search-icon" size={18} />
+              <input 
+                type="text"
+                placeholder="Search address, landmark, or intersection..."
+                className="location-search-input"
+                value={searchVal}
+                onChange={(e) => { setSearchVal(e.target.value); setShowSuggestions(true); }}
+              />
+              {showSuggestions && searchVal && (
+                <div className="search-results-dropdown">
+                  {suggestions.filter(s => s.name.toLowerCase().includes(searchVal.toLowerCase())).map((s, idx) => (
+                    <div key={idx} className="search-result-item" onClick={() => selectSuggestion(s)}>
+                      <MapPin size={12} />
+                      <span>{s.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Map in Premium Card */}
+          <div className="map-card">
+            <div className="map-card-inner" ref={svgRef as any}>
+              <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 500 350">
+                <defs>
+                  <pattern id="wizard-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+                    <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(148,163,184,0.12)" strokeWidth="1" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#wizard-grid)" />
+                
+                {/* Road Network Grid Layout */}
+                <path d="M 0,120 L 500,120" stroke="var(--border-light)" strokeWidth="14" fill="none" opacity="0.9" />
+                <path d="M 0,120 L 500,120" stroke="white" strokeWidth="1" strokeDasharray="6,6" fill="none" opacity="0.6" />
+
+                <path d="M 250,0 L 250,350" stroke="var(--border-light)" strokeWidth="14" fill="none" opacity="0.9" />
+                <path d="M 250,0 L 250,350" stroke="white" strokeWidth="1" strokeDasharray="6,6" fill="none" opacity="0.6" />
+
+                <path d="M 0,250 L 500,250" stroke="var(--border-light)" strokeWidth="14" fill="none" opacity="0.9" />
+                <path d="M 0,250 L 500,250" stroke="white" strokeWidth="1" strokeDasharray="6,6" fill="none" opacity="0.6" />
+
+                <path d="M 100,0 L 100,350" stroke="var(--border-light)" strokeWidth="8" fill="none" opacity="0.4" />
+                <path d="M 400,0 L 400,350" stroke="var(--border-light)" strokeWidth="8" fill="none" opacity="0.4" />
+
+                {/* Nearby Tow Truck Visual Pin */}
+                <g transform="translate(180, 280)">
+                  <circle cx="0" cy="0" r="14" fill="var(--primary)" opacity="0.15" className="map-pulse-circle" />
+                  <circle cx="0" cy="0" r="5" fill="var(--primary)" />
+                  <text x="8" y="4" fontSize="8" fontWeight="800" fill="var(--text-muted)">Tow Node A</text>
+                </g>
+
+                {/* Nearby Mechanics Visual Pins */}
+                <g transform="translate(100, 120)">
+                  <circle cx="0" cy="0" r="14" fill="var(--secondary)" opacity="0.15" className="map-pulse-circle" />
+                  <circle cx="0" cy="0" r="5" fill="var(--secondary)" />
+                  <text x="8" y="4" fontSize="8" fontWeight="800" fill="var(--text-muted)">Apex Service</text>
+                </g>
+
+                <g transform="translate(300, 220)">
+                  <circle cx="0" cy="0" r="14" fill="var(--secondary)" opacity="0.15" className="map-pulse-circle" />
+                  <circle cx="0" cy="0" r="5" fill="var(--secondary)" />
+                  <text x="8" y="4" fontSize="8" fontWeight="800" fill="var(--text-muted)">QuickFix Unit</text>
+                </g>
+
+                {/* Draggable User Pin */}
+                <g transform={`translate(${userPos.x}, ${userPos.y})`} onMouseDown={handleStartDrag} onTouchStart={handleStartDrag} className="map-draggable-pin">
+                  {/* Accuracy Radar Circle */}
+                  <circle cx="0" cy="0" r={accuracy * 6} fill="var(--accent)" opacity="0.12" className="map-accuracy-radar" />
+                  
+                  {/* Ping shadow */}
+                  <circle cx="0" cy="0" r="15" fill="var(--accent)" opacity="0.2" className="map-pulse-circle" />
+                  
+                  {/* Location Marker Needle Pin */}
+                  <path d="M0,0 C-8,-8 -12,-18 0,-26 C12,-18 8,-8 0,0 Z" fill="var(--accent)" />
+                  <circle cx="0" cy="-17" r="4.5" fill="white" />
+                  
+                  {/* Label indicator */}
+                  <rect x="-35" y="-45" width="70" height="15" rx="3" fill="var(--dark-bg)" opacity="0.85" />
+                  <text x="0" y="-35" fill="white" fontSize="7.5" fontWeight="900" textAnchor="middle">DRAG ME</text>
+                </g>
+              </svg>
+
+              {/* Map Controls - Top Right */}
+              <div className="map-controls-top-right">
+                <button className="map-control-btn" onClick={handleUseCurrentLocation} title="Use Current Location">
+                  <Crosshair size={18} />
+                </button>
+                <button className="map-control-btn" title="Zoom In">
+                  <ZoomIn size={18} />
+                </button>
+                <button className="map-control-btn" title="Zoom Out">
+                  <ZoomOut size={18} />
+                </button>
+                <button className="map-control-btn" title="Fullscreen">
+                  <Maximize2 size={18} />
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Draggable Vector Map Mockup */}
-          <div className="vector-map-wrapper" ref={svgRef as any}>
-            <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 500 350">
-              <defs>
-                <pattern id="wizard-grid" width="30" height="30" patternUnits="userSpaceOnUse">
-                  <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(148,163,184,0.12)" strokeWidth="1" />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#wizard-grid)" />
-              
-              {/* Road Network Grid Layout */}
-              <path d="M 0,120 L 500,120" stroke="var(--border-light)" strokeWidth="14" fill="none" opacity="0.9" />
-              <path d="M 0,120 L 500,120" stroke="white" strokeWidth="1" strokeDasharray="6,6" fill="none" opacity="0.6" />
-
-              <path d="M 250,0 L 250,350" stroke="var(--border-light)" strokeWidth="14" fill="none" opacity="0.9" />
-              <path d="M 250,0 L 250,350" stroke="white" strokeWidth="1" strokeDasharray="6,6" fill="none" opacity="0.6" />
-
-              <path d="M 0,250 L 500,250" stroke="var(--border-light)" strokeWidth="14" fill="none" opacity="0.9" />
-              <path d="M 0,250 L 500,250" stroke="white" strokeWidth="1" strokeDasharray="6,6" fill="none" opacity="0.6" />
-
-              <path d="M 100,0 L 100,350" stroke="var(--border-light)" strokeWidth="8" fill="none" opacity="0.4" />
-              <path d="M 400,0 L 400,350" stroke="var(--border-light)" strokeWidth="8" fill="none" opacity="0.4" />
-
-              {/* Nearby Tow Truck Visual Pin */}
-              <g transform="translate(180, 280)">
-                <circle cx="0" cy="0" r="14" fill="var(--primary)" opacity="0.15" className="map-pulse-circle" />
-                <circle cx="0" cy="0" r="5" fill="var(--primary)" />
-                <text x="8" y="4" fontSize="8" fontWeight="800" fill="var(--text-muted)">🚛 Tow Node A</text>
-              </g>
-
-              {/* Nearby Mechanics Visual Pins */}
-              <g transform="translate(100, 120)">
-                <circle cx="0" cy="0" r="14" fill="var(--secondary)" opacity="0.15" className="map-pulse-circle" />
-                <circle cx="0" cy="0" r="5" fill="var(--secondary)" />
-                <text x="8" y="4" fontSize="8" fontWeight="800" fill="var(--text-muted)">🔧 Apex Service</text>
-              </g>
-
-              <g transform="translate(300, 220)">
-                <circle cx="0" cy="0" r="14" fill="var(--secondary)" opacity="0.15" className="map-pulse-circle" />
-                <circle cx="0" cy="0" r="5" fill="var(--secondary)" />
-                <text x="8" y="4" fontSize="8" fontWeight="800" fill="var(--text-muted)">🔧 QuickFix Unit</text>
-              </g>
-
-              {/* Draggable User Pin */}
-              <g transform={`translate(${userPos.x}, ${userPos.y})`} onMouseDown={handleStartDrag} onTouchStart={handleStartDrag} className="map-draggable-pin">
-                {/* Accuracy Radar Circle */}
-                <circle cx="0" cy="0" r={accuracy * 6} fill="var(--accent)" opacity="0.12" className="map-accuracy-radar" />
-                
-                {/* Ping shadow */}
-                <circle cx="0" cy="0" r="15" fill="var(--accent)" opacity="0.2" className="map-pulse-circle" />
-                
-                {/* Location Marker Needle Pin */}
-                <path d="M0,0 C-8,-8 -12,-18 0,-26 C12,-18 8,-8 0,0 Z" fill="var(--accent)" />
-                <circle cx="0" cy="-17" r="4.5" fill="white" />
-                
-                {/* Label indicator */}
-                <rect x="-35" y="-45" width="70" height="15" rx="3" fill="var(--dark-bg)" opacity="0.85" />
-                <text x="0" y="-35" fill="white" fontSize="7.5" fontWeight="900" textAnchor="middle">DRAG ME</text>
-              </g>
-            </svg>
-
-            {/* Recenter Location Button */}
-            <button className="map-location-reset-btn" onClick={handleUseCurrentLocation}>
-              <Compass size={14} className="animate-spin-slow" />
-              <span>Use GPS Current Location</span>
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>SELECTED RESCUE ADDRESS:</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{address}</span>
-            </div>
-            <div className="accuracy-indicator">
-              <div className="accuracy-dot"></div>
-              <span>GPS Lock Accurate to {accuracy} meters</span>
+              {/* Selected Address Card - Bottom Left */}
+              <div className="map-address-card">
+                <span className="map-address-label">Selected Rescue Address</span>
+                <span className="map-address-text">{address}</span>
+                <div className="map-address-accuracy">
+                  <div className="accuracy-dot"></div>
+                  <span>GPS Lock Accurate to {accuracy}m</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Saved Addresses Panel */}
+          {/* Location Information Card */}
+          <div style={{
+            background: 'var(--card-bg, rgba(15,23,42,0.7))',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid var(--border-light)',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <MapPin size={16} style={{ color: 'var(--primary)' }} />
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.05em' }}>LOCATION DETAILS</span>
+            </div>
+
+            {/* Address row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.75rem', background: 'var(--light-surface)', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>FULL ADDRESS</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>{address}</span>
+              </div>
+            </div>
+
+            {/* Grid: Coordinates + Accuracy + ETA */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ padding: '0.75rem', background: 'var(--light-surface)', borderRadius: '10px', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>COORDINATES</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{(userPos.x / 10).toFixed(4)}°N, {(userPos.y / 10).toFixed(4)}°E</span>
+              </div>
+              <div style={{ padding: '0.75rem', background: 'var(--light-surface)', borderRadius: '10px', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>GPS ACCURACY</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: accuracy <= 4 ? 'var(--success)' : 'var(--warning)' }}>±{accuracy}m radius</span>
+              </div>
+              <div style={{ padding: '0.75rem', background: 'var(--light-surface)', borderRadius: '10px', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>NEAREST MECHANIC</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--primary)' }}>~8 min ETA</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Saved Addresses */}
           <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
-              CHOOSE FROM SAVED ADRESSES:
+            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.75rem' }}>
+              CHOOSE FROM SAVED ADDRESSES
             </span>
             <div className="saved-addresses-grid">
               <div 
@@ -498,7 +556,7 @@ export default function RequestAssistance({
                   setAccuracy(3);
                 }}
               >
-                <span className="saved-address-title">🏢 Work</span>
+                <span className="saved-address-title">Work</span>
                 <span className="saved-address-value">Bandra Kurla Complex</span>
               </div>
               <div 
@@ -510,7 +568,7 @@ export default function RequestAssistance({
                   setAccuracy(4);
                 }}
               >
-                <span className="saved-address-title">🏠 Home</span>
+                <span className="saved-address-title">Home</span>
                 <span className="saved-address-value">Federal St, Boston</span>
               </div>
               <div 
@@ -522,31 +580,68 @@ export default function RequestAssistance({
                   setAccuracy(5);
                 }}
               >
-                <span className="saved-address-title">🛣️ Highway Route</span>
+                <span className="saved-address-title">Highway Route</span>
                 <span className="saved-address-value">Mumbai Express Highway</span>
               </div>
             </div>
           </div>
 
-          {/* Stepper Footer Buttons */}
-          <div className="wizard-footer-buttons">
-            <button 
-              className="btn btn-secondary"
-              onClick={() => setActiveDashboardTab('home')}
-              style={{ padding: '0.75rem 1.5rem', fontWeight: 700 }}
-            >
-              Cancel
-            </button>
-            <button 
-              className="btn btn-primary"
-              onClick={() => setStep(2)}
-              style={{ padding: '0.75rem 2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <span>Next: Vehicle Details</span>
-              <ArrowRight size={16} />
-            </button>
+          {/* Safety Reminder Card */}
+          <div style={{
+            background: 'rgba(34,197,94,0.06)',
+            border: '1px solid rgba(34,197,94,0.2)',
+            borderRadius: '14px',
+            padding: '1.25rem 1.5rem',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '1rem'
+          }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              background: 'rgba(34,197,94,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <CheckCircle size={18} style={{ color: 'var(--success, #22C55E)' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--success, #22C55E)', display: 'block', marginBottom: '0.35rem' }}>SAFETY REMINDER</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem 1rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>▸ Turn on hazard lights immediately</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>▸ Stay inside with seatbelt fastened</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>▸ Move to safe shoulder if possible</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>▸ Report any injuries to dispatcher</span>
+              </div>
+            </div>
           </div>
-        </div>
+
+          {/* Sticky Bottom Action Bar */}
+          <div className="sos-bottom-bar">
+            <div className="sos-bottom-bar-left">
+              <button 
+                className="btn btn-secondary"
+                onClick={() => setActiveDashboardTab('home')}
+                style={{ padding: '0.65rem 1.25rem', fontWeight: 700, fontSize: '0.85rem' }}
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="sos-bottom-bar-right">
+              <button 
+                className="btn btn-primary"
+                onClick={() => setStep(2)}
+                style={{ padding: '0.7rem 2rem', fontWeight: 800, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <span>Confirm & Continue</span>
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ==========================================
@@ -556,7 +651,7 @@ export default function RequestAssistance({
         <div className="wizard-card animate-slide-up">
           <div className="wizard-card-header">
             <h2 className="wizard-card-title" style={{ textAlign: 'left', margin: 0 }}>
-              🚗 Select Vehicle Specifications
+              Select Vehicle Specifications
             </h2>
             <p className="wizard-card-subtitle">
               Verify your model details. This matches the correct mechanical dispatchers carrying correct replacement components.
@@ -663,7 +758,7 @@ export default function RequestAssistance({
         <div className="wizard-card animate-slide-up">
           <div className="wizard-card-header">
             <h2 className="wizard-card-title" style={{ textAlign: 'left', margin: 0 }}>
-              🔧 What Issue are you Experiencing?
+              What Issue are you Experiencing?
             </h2>
             <p className="wizard-card-subtitle">
               Select the primary fault. Snap images or describe the situation for AI diagnostic estimation.
@@ -823,7 +918,7 @@ export default function RequestAssistance({
 
           <div className="wizard-card-header">
             <h2 className="wizard-card-title" style={{ textAlign: 'left', margin: 0, color: 'var(--primary)' }}>
-              🤖 AI Diagnostic Diagnosis & Safety Protocols
+              AI Diagnostic Analysis & Safety Protocols
             </h2>
             <p className="wizard-card-subtitle">
               Analyzing text descriptions and metadata to prepare mechanic dispatch parameters...
@@ -935,7 +1030,7 @@ export default function RequestAssistance({
         <div className="wizard-card animate-slide-up">
           <div className="wizard-card-header">
             <h2 className="wizard-card-title" style={{ textAlign: 'left', margin: 0 }}>
-              💳 Verify Matches & Secure Checkout
+              Verify Matches & Secure Checkout
             </h2>
             <p className="wizard-card-subtitle">
               Choose the closest mechanic team. Verify pricing and confirm the emergency SOS request dispatch.
@@ -1088,7 +1183,7 @@ export default function RequestAssistance({
               onClick={handleConfirmRequest}
               style={{ padding: '0.75rem 2.5rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1rem', borderRadius: 'var(--radius-pill)', border: 'none', background: 'var(--accent)', color: 'white', cursor: 'pointer', boxShadow: '0 8px 24px rgba(239, 68, 68, 0.3)' }}
             >
-              <span>🚨 Confirm & Request Assistance</span>
+              <span>Confirm & Request Assistance</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -1129,7 +1224,7 @@ export default function RequestAssistance({
 
           <div>
             <h1 className="gradient-text" style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '0.5rem' }}>
-              Emergency Rescue Active!
+              Emergency Rescue Active
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', maxWidth: '400px', margin: '0 auto' }}>
               Your roadside dispatch request has been successfully broadcast. Assigned responder is locking down coordinates.
@@ -1180,7 +1275,7 @@ export default function RequestAssistance({
               onClick={handleCloseSuccess}
               style={{ padding: '0.85rem 2rem', fontWeight: 900, fontSize: '0.95rem', borderRadius: 'var(--radius-pill)', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
             >
-              <span>🧭 Track Assistance Real-Time</span>
+              <span>Track Assistance Real-Time</span>
               <ArrowRight size={16} />
             </button>
             <button 

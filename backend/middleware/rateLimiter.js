@@ -20,11 +20,11 @@ export const apiLimiter = rateLimit({
 
 // Strict limiter for authentication routes (login, register, password reset)
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 10, // 10 attempts per 15 min
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 20, // 20 attempts per 5 min
   message: {
     success: false,
-    message: 'Too many authentication attempts. Please try again after 15 minutes.',
+    message: 'Too many authentication attempts. Please try again after a few minutes.',
     error: 'Too Many Requests'
   },
   standardHeaders: true,

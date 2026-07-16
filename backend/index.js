@@ -82,7 +82,8 @@ const corsOptions = {
     if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       return callback(null, true);
     }
-    return callback(new Error('Not allowed by CORS'));
+    logger.warn('CORS origin rejected', { origin, allowedOrigins });
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -111,6 +112,21 @@ app.use(helmet({
 // CORS
 app.use(cors(corsOptions));
 
+// CORS rejection handler - returns JSON instead of generic network error
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !allowedOrigins.includes(origin) && !allowedOrigins.includes('*')) {
+    logger.warn('CORS blocked request', { origin, method: req.method, url: req.originalUrl });
+    return res.status(403).json({
+      success: false,
+      message: 'Request blocked by CORS policy.',
+      error: 'Forbidden',
+      allowedOrigins,
+    });
+  }
+  next();
+});
+
 // Body parsing
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
@@ -129,7 +145,7 @@ app.use(requestLogger);
 // ============================================================
 
 // Specific rate limiters for sensitive routes
-app.use('/api/auth/login', authLimiter);
+// Note: authLimiter is also applied inside auth.js route handlers, so only apply here for register/forgot/reset
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
@@ -180,6 +196,16 @@ app.use((req, res, next) => {
 // ============================================================
 app.use(healthRoutes);
 
+// Convenience /api/health endpoint (mirrors /health)
+app.get('/api/health', (req, res) => {
+  const dbStatus = getDatabaseStatus(db);
+  const healthReport = services.health.getHealthReport();
+  res.status(healthReport.status === 'UP' ? 200 : 503).json({
+    success: healthReport.status === 'UP',
+    ...healthReport,
+  });
+});
+
 // ============================================================
 // API ROUTING
 // ============================================================
@@ -226,6 +252,19 @@ app.get('/status', (req, res) => {
     message: 'RoadRescue Backend API is fully operational.',
     database: dbStatus,
     migrations: migrationResults.length > 0 ? migrationResults : 'No new migrations',
+  });
+});
+
+// Diagnostic endpoint (dev only) - check if demo users exist
+app.get('/api/debug/users', (req, res) => {
+  const users = db.prepare('SELECT id, name, email, status FROM users').all();
+  const mechanics = db.prepare('SELECT id, name, email, approval_status FROM mechanics').all();
+  const admins = db.prepare('SELECT id, name, email, role FROM admins').all();
+  res.json({
+    success: true,
+    users: { count: users.length, rows: users },
+    mechanics: { count: mechanics.length, rows: mechanics },
+    admins: { count: admins.length, rows: admins },
   });
 });
 

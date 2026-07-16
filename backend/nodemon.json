@@ -1,0 +1,6 @@
+{
+  "watch": ["*.js"],
+  "ignore": ["logs/*", "*.db", "*.db-shm", "*.db-wal", "uploads/*", "node_modules/*", "test_*"],
+  "ext": "js,mjs",
+  "delay": 1000
+}

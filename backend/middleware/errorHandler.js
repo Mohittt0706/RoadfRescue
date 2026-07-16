@@ -11,6 +11,8 @@
  * Never exposes stack traces in production.
  */
 
+import logger from './logger.js';
+
 /**
  * Custom API Error class for throwing structured errors
  */
@@ -78,12 +80,18 @@ export function errorHandler(err, req, res, next) {
   }
 
   // Log error in all environments
-  const logLevel = statusCode >= 500 ? 'error' : 'warn';
-  console[logLevel](`[${new Date().toISOString()}] ${statusCode} ${message}`, {
-    path: req.originalUrl,
-    method: req.method,
-    ...(statusCode >= 500 && { stack: err.stack }),
-  });
+  if (statusCode >= 500) {
+    logger.error(`${statusCode} ${message}`, {
+      path: req.originalUrl,
+      method: req.method,
+      stack: err.stack,
+    });
+  } else {
+    logger.warn(`${statusCode} ${message}`, {
+      path: req.originalUrl,
+      method: req.method,
+    });
+  }
 
   // Send response
   const response = {

@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { jwtSecret, verifyToken, verifyUser } from './middleware.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { uploadProfileImage } from '../middleware/upload.js';
+import logger from '../middleware/logger.js';
 import {
   validate,
   registerValidator,
@@ -48,7 +49,7 @@ function storeRefreshToken(db, token, userId, role) {
   db.prepare(`
     INSERT INTO refresh_tokens (token, user_id, role, expires_at, blacklisted)
     VALUES (?, ?, ?, ?, 0)
-  `).run(token, userId, role);
+  `).run(token, userId, role, expiresAt);
 }
 
 // POST /api/auth/register - Register a new user
@@ -82,7 +83,7 @@ router.post('/register', authLimiter, registerValidator, validate, async (req, r
       user: { id: userId, name, email, phone, role: 'user' }
     });
   } catch (err) {
-    console.error('Register error:', err);
+    logger.error('Register error', { error: err.message, stack: err.stack, email });
     res.status(500).json({ success: false, message: 'Failed to create account.', error: err.message });
   }
 });
@@ -112,7 +113,7 @@ router.post('/mechanic/register', authLimiter, mechanicRegisterValidator, valida
       mechanic: { id: mechanicId, name, email, phone, role: 'mechanic', status: 'pending' }
     });
   } catch (err) {
-    console.error('Mechanic register error:', err);
+    logger.error('Mechanic register error', { error: err.message, stack: err.stack, email });
     res.status(500).json({ success: false, message: 'Failed to register mechanic.', error: err.message });
   }
 });
@@ -125,11 +126,13 @@ router.post('/login', authLimiter, loginValidator, validate, async (req, res) =>
   try {
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
+      logger.warn('Login failed: user not found', { email, ip: req.ip });
       return res.status(401).json({ success: false, message: 'Invalid email or password.', error: 'Unauthorized' });
     }
 
     // Verify account status
     if (user.status !== 'active') {
+      logger.warn('Login failed: account not active', { email, status: user.status, ip: req.ip });
       return res.status(403).json({
         success: false,
         message: `Your account is ${user.status}. Please contact support.`,
@@ -139,12 +142,14 @@ router.post('/login', authLimiter, loginValidator, validate, async (req, res) =>
 
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
+      logger.warn('Login failed: incorrect password', { email, userId: user.id, ip: req.ip });
       return res.status(401).json({ success: false, message: 'Invalid email or password.', error: 'Unauthorized' });
     }
 
     const { accessToken, refreshToken } = generateTokens({ id: user.id, email: user.email, role: 'user' });
     storeRefreshToken(db, refreshToken, user.id, 'user');
 
+    logger.info('Login successful', { email, userId: user.id, ip: req.ip });
     res.json({
       success: true,
       message: 'Login successful.',
@@ -162,7 +167,7 @@ router.post('/login', authLimiter, loginValidator, validate, async (req, res) =>
       }
     });
   } catch (err) {
-    console.error('User login error:', err);
+    logger.error('User login error', { error: err.message, stack: err.stack, email });
     res.status(500).json({ success: false, message: 'Login failed.', error: err.message });
   }
 });
@@ -175,6 +180,7 @@ router.post('/mechanic/login', authLimiter, loginValidator, validate, async (req
   try {
     const mechanic = db.prepare('SELECT * FROM mechanics WHERE email = ?').get(email);
     if (!mechanic) {
+      logger.warn('Mechanic login failed: not found', { email, ip: req.ip });
       return res.status(401).json({ success: false, message: 'Invalid email or password.', error: 'Unauthorized' });
     }
 
@@ -183,6 +189,7 @@ router.post('/mechanic/login', authLimiter, loginValidator, validate, async (req
       let statusMsg = 'Your account is pending admin approval.';
       if (mechanic.approval_status === 'blocked') statusMsg = 'Your account is blocked. Please contact support.';
       if (mechanic.approval_status === 'rejected') statusMsg = 'Your application was rejected.';
+      logger.warn('Mechanic login failed: not approved', { email, approval_status: mechanic.approval_status, ip: req.ip });
       return res.status(403).json({
         success: false,
         message: statusMsg,
@@ -191,17 +198,20 @@ router.post('/mechanic/login', authLimiter, loginValidator, validate, async (req
     }
 
     if (!mechanic.password_hash) {
+      logger.warn('Mechanic login failed: no password hash', { email, ip: req.ip });
       return res.status(401).json({ success: false, message: 'No password set for this account. Contact admin.', error: 'Unauthorized' });
     }
 
     const validPassword = await bcrypt.compare(password, mechanic.password_hash);
     if (!validPassword) {
+      logger.warn('Mechanic login failed: incorrect password', { email, userId: mechanic.id, ip: req.ip });
       return res.status(401).json({ success: false, message: 'Invalid email or password.', error: 'Unauthorized' });
     }
 
     const { accessToken, refreshToken } = generateTokens({ id: mechanic.id, email: mechanic.email, role: 'mechanic' });
     storeRefreshToken(db, refreshToken, mechanic.id, 'mechanic');
 
+    logger.info('Mechanic login successful', { email, userId: mechanic.id, ip: req.ip });
     res.json({
       success: true,
       message: 'Login successful.',
@@ -220,7 +230,7 @@ router.post('/mechanic/login', authLimiter, loginValidator, validate, async (req
       }
     });
   } catch (err) {
-    console.error('Mechanic login error:', err);
+    logger.error('Mechanic login error', { error: err.message, stack: err.stack, email });
     res.status(500).json({ success: false, message: 'Login failed.', error: err.message });
   }
 });
@@ -233,18 +243,21 @@ router.post('/admin/login', authLimiter, loginValidator, validate, async (req, r
   try {
     const admin = db.prepare('SELECT * FROM admins WHERE email = ?').get(email);
     if (!admin) {
+      logger.warn('Admin login failed: not found', { email, ip: req.ip });
       return res.status(401).json({ success: false, message: 'Invalid email or password.', error: 'Unauthorized' });
     }
 
     // Secure BCrypt authentication only (legacy plaintext fallback removed)
     const validPassword = await bcrypt.compare(password, admin.password_hash);
     if (!validPassword) {
+      logger.warn('Admin login failed: incorrect password', { email, userId: admin.id, ip: req.ip });
       return res.status(401).json({ success: false, message: 'Invalid email or password.', error: 'Unauthorized' });
     }
 
     const { accessToken, refreshToken } = generateTokens({ id: admin.id, email: admin.email, role: 'admin' });
     storeRefreshToken(db, refreshToken, admin.id, 'admin');
 
+    logger.info('Admin login successful', { email, userId: admin.id, ip: req.ip });
     res.json({
       success: true,
       message: 'Login successful.',
@@ -258,7 +271,7 @@ router.post('/admin/login', authLimiter, loginValidator, validate, async (req, r
       }
     });
   } catch (err) {
-    console.error('Admin login error:', err);
+    logger.error('Admin login error', { error: err.message, stack: err.stack, email });
     res.status(500).json({ success: false, message: 'Login failed.', error: err.message });
   }
 });
@@ -307,7 +320,7 @@ router.post('/refresh', async (req, res) => {
       refreshToken: newRefreshToken
     });
   } catch (err) {
-    console.error('Token refresh error:', err);
+    logger.error('Token refresh error', { error: err.message, stack: err.stack });
     res.status(500).json({ success: false, message: 'Failed to refresh token.', error: err.message });
   }
 });
@@ -325,7 +338,7 @@ router.post('/logout', async (req, res) => {
     db.prepare('DELETE FROM refresh_tokens WHERE token = ?').run(refreshToken);
     res.json({ success: true, message: 'Logout successful.' });
   } catch (err) {
-    console.error('Logout error:', err);
+    logger.error('Logout error', { error: err.message, stack: err.stack });
     res.status(500).json({ success: false, message: 'Logout failed.', error: err.message });
   }
 });
@@ -350,7 +363,7 @@ router.get('/me', verifyToken, async (req, res) => {
       return res.json({ success: true, user: { ...user, profileImage: user.profile_image } });
     }
   } catch (err) {
-    console.error('Get profile (me) error:', err);
+    logger.error('Get profile (me) error', { error: err.message, stack: err.stack, userId: id });
     res.status(500).json({ success: false, message: 'Failed to retrieve profile.', error: err.message });
   }
 });
@@ -413,7 +426,7 @@ router.put('/profile', verifyToken, profileUpdateValidator, validate, async (req
       return res.status(403).json({ success: false, message: 'Admins cannot update their profiles via this route.' });
     }
   } catch (err) {
-    console.error('Update profile error:', err);
+    logger.error('Update profile error', { error: err.message, stack: err.stack, userId: id });
     res.status(500).json({ success: false, message: 'Failed to update profile.', error: err.message });
   }
 });
@@ -444,7 +457,7 @@ router.post('/profile/image', verifyToken, uploadProfileImage.single('profileIma
       imageUrl
     });
   } catch (err) {
-    console.error('Profile image upload db error:', err);
+    logger.error('Profile image upload db error', { error: err.message, stack: err.stack, userId: id });
     res.status(500).json({ success: false, message: 'Failed to save profile image reference.', error: err.message });
   }
 });
@@ -486,7 +499,7 @@ router.put('/change-password', verifyToken, changePasswordValidator, validate, a
 
     res.json({ success: true, message: 'Password changed successfully.' });
   } catch (err) {
-    console.error('Change password error:', err);
+    logger.error('Change password error', { error: err.message, stack: err.stack, userId: id });
     res.status(500).json({ success: false, message: 'Failed to change password.', error: err.message });
   }
 });
@@ -533,7 +546,7 @@ router.post('/forgot-password', forgotPasswordValidator, validate, async (req, r
       message: 'If that email is registered, we have sent a reset password link.'
     });
   } catch (err) {
-    console.error('Forgot password error:', err);
+    logger.error('Forgot password error', { error: err.message, stack: err.stack, email });
     res.status(500).json({ success: false, message: 'Failed to generate reset link.', error: err.message });
   }
 });
@@ -569,7 +582,7 @@ router.post('/reset-password', resetPasswordValidator, validate, async (req, res
 
     res.json({ success: true, message: 'Password reset successfully. You can now login.' });
   } catch (err) {
-    console.error('Reset password error:', err);
+    logger.error('Reset password error', { error: err.message, stack: err.stack });
     res.status(500).json({ success: false, message: 'Failed to reset password.', error: err.message });
   }
 });
